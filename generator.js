@@ -511,7 +511,21 @@ function generateCity(opts) {
   const age = { jeune: 1, ancienne: 2, tresancienne: 3 }[opts.age]
     || (ageRoll < 0.3 ? 1 : ageRoll < (opts.size === 'capitale' || opts.size === 'grande' ? 0.55 : 0.75) ? 2 : 3);
   const fractions = age === 1 ? [1] : age === 2 ? [0.45, 1] : [0.25, 0.55, 1];
-  const ringSets = fractions.map(f => takeFlat(Math.max(2, Math.round(N * f))));
+  // Une enceinte prend le tracé le plus court à défendre : l'enveloppe convexe de la zone bâtie.
+  // Les pentes et collines enfermées restent à l'intérieur (vignes, terrasses), comme à Athènes ou Rome.
+  const convexify = set => {
+    const pts = [...set].map(ci => cells[ci].site).sort((a, b) => a[0] - b[0] || a[1] - b[1]);
+    if (pts.length < 3) return set;
+    const cross = (o, a, b) => (a[0] - o[0]) * (b[1] - o[1]) - (a[1] - o[1]) * (b[0] - o[0]);
+    const lower = [], upper = [];
+    for (const p of pts) { while (lower.length >= 2 && cross(lower[lower.length - 2], lower[lower.length - 1], p) <= 0) lower.pop(); lower.push(p); }
+    for (const p of pts.slice().reverse()) { while (upper.length >= 2 && cross(upper[upper.length - 2], upper[upper.length - 1], p) <= 0) upper.pop(); upper.push(p); }
+    const hull = lower.slice(0, -1).concat(upper.slice(0, -1));
+    const inHull = q => hull.every((a, i) => cross(a, hull[(i + 1) % hull.length], q) >= -1e-6);
+    cells.forEach(c => { if (!touchesBorder(c) && inHull(c.site)) set.add(c.index); });
+    return fillHoles(set);
+  };
+  const ringSets = fractions.map(f => convexify(takeFlat(Math.max(2, Math.round(N * f)))));
   const innerSet = ringSets[ringSets.length - 1];
   cells.forEach(c => {
     c.inner = innerSet.has(c.index);
@@ -580,8 +594,12 @@ function generateCity(opts) {
   const citadelEdges = new Set(boundary(citadelSet).map(([a, b]) => ek(a, b)));
 
   // ================= 8. Portes =================
+  // Porte possible : un sommet du rempart dont un seul îlot touche l'extérieur (angle rentrant)
+  // ou l'intérieur (angle saillant) ; cet îlot sera coupé pour faire passer la route.
   const outsideOf = vid => (cellsAt.get(vid) || []).filter(c => !c.inner);
-  const candidates = wall.filter(vid => outsideOf(vid).length === 1 && !outsideOf(vid)[0].steep && riverDist(verts[vid]) > 20);
+  const insideOf = vid => (cellsAt.get(vid) || []).filter(c => c.inner);
+  const candidates = wall.filter(vid => (outsideOf(vid).length === 1 || insideOf(vid).length === 1)
+    && !outsideOf(vid).some(c => c.steep) && riverDist(verts[vid]) > 20);
   const rG = rng('portes|' + opts.size);
   const gates = [];
   const base = rG() * Math.PI * 2;
@@ -620,8 +638,11 @@ function generateCity(opts) {
     return true;
   };
   for (const g of gates) {
-    const out = outsideOf(g);
-    if (out.length === 1) { const far = farOf(out[0], g); if (far >= 0) splitAt(out[0], g, far); }
+    for (const side of [outsideOf(g), insideOf(g)]) {
+      if (side.length !== 1 || side[0].type === 'plaza' || side[0].citadel) continue;
+      const far = farOf(side[0], g);
+      if (far >= 0) splitAt(side[0], g, far);
+    }
   }
   reindex();
 
