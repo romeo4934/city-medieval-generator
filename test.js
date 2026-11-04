@@ -46,6 +46,9 @@ for (let i = 0; i < COUNT; i++) {
   const opts = {
     seed: 'test' + i, size: sizes[i % 4], relief: reliefs[(i >> 2) % 4], river: rivers[(i >> 4) % 4], age: ages[(i >> 1) % 4],
     buildings: i % 3 ? all : ['temple', 'chateau'],
+    plan: i % 5 === 0 ? 'bastide' : 'organique',
+    walls: i % 3 === 0 ? 'double' : 'simple',
+    twin: i % 7 === 3 ? 'oui' : 'non',
   };
   try {
     const t = Date.now();

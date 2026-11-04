@@ -61,6 +61,9 @@ function citySheet(city) {
   if (riverNames.length === 1) site.push(`La rivière, ${riverNames[0]}, traverse la ville ; le marché s'est installé près de l'ancien gué.`);
   if (riverNames.length === 2) site.push(`${cap(riverNames[0])} traverse la ville et reçoit son affluent, ${riverNames[1]}.`);
   if (city.waterGates.length) site.push(`La rivière entre dans la ville sous ${city.waterGates.length > 1 ? city.waterGates.length + ' portes d’eau' : 'une porte d’eau'}, fermée la nuit par une herse.`);
+  if (city.twin) site.push(`Comme à Provins, ce sont deux villes en une : la ville haute, ancienne et fortifiée, occupe le plateau avec son château et sa collégiale ; la ville basse, marchande, s'est étendue au pied de la pente dans sa propre enceinte. Une montée relie les deux.`);
+  if (city.plan === 'bastide') site.push(`C'est une bastide, une ville neuve fondée d'un seul coup : rues tirées au cordeau, îlots rectangulaires de même taille, et au centre une place carrée bordée de couverts (arcades) avec sa halle.`);
+  if (city.doubleWall) site.push(`L'enceinte est double, comme à Carcassonne : un mur extérieur plus bas précède le rempart ; entre les deux s'étendent les lices, où l'on s'exerce aux armes. Chaque porte est protégée par une barbacane.`);
   if (city.moat) site.push(city.moat.water
     ? `Un fossé en eau d'une quinzaine de mètres fait le tour du rempart ; on le franchit sur un pont devant chaque porte.`
     : `Un fossé sec, creusé au pied du rempart, fait le tour de la ville ; un pont le franchit devant chaque porte.`);
@@ -70,7 +73,10 @@ function citySheet(city) {
   // --- Histoire déduite des enceintes ---
   L.push('## Histoire (lisible dans le plan)', '');
   const old = city.oldWalls, standing = old.filter(w => w.standing).length;
-  const hist = [`La ville est née autour du marché, sur le terrain le plus plat et le plus central.`];
+  const hist = [city.plan === 'bastide'
+    ? 'La ville a été fondée d’un seul tenant par un seigneur qui voulait peupler ses terres : le plan a été tracé avant la première maison, et les lots ont été vendus à égalité aux nouveaux habitants.'
+    : city.twin ? 'La ville haute est la plus ancienne : un château sur le plateau, et autour, les maisons de ceux qui le servaient. La ville basse est née plus tard, autour du marché, au bord de la route.'
+    : `La ville est née autour du marché, sur le terrain le plus plat et le plus central.`];
   if (city.age === 1) hist.push('Elle n’a jamais débordé de sa première enceinte : c’est une ville encore jeune, ou qui a cessé de croître.');
   if (city.age >= 2) {
     hist.push(`Elle a débordé de ses murs ${city.age === 2 ? 'une fois' : 'deux fois'} : ${city.age === 2 ? 'une nouvelle enceinte' : 'deux nouvelles enceintes'} ${city.age === 2 ? 'a été bâtie' : 'ont été bâties'} plus loin, et ${city.age === 2 ? "l'ancienne est restée" : 'les anciennes sont restées'} à l'intérieur.`);
@@ -108,7 +114,7 @@ function citySheet(city) {
   // --- Lieux notables ---
   L.push('## Lieux notables', '');
   for (const sp of city.specials) L.push(`- **${sp.label}**${sp.inner === false ? ' (hors les murs)' : ''}`);
-  for (const c of city.churches) L.push(`- **Église ${c.name}** (${city.districts[c.district] ? city.districts[c.district].name : 'quartier'})`);
+  for (const c of city.churches) L.push(`- **${c.name.startsWith('Collégiale') ? c.name : 'Église ' + c.name}** (${c.district === -1 ? 'ville haute' : city.districts[c.district] ? city.districts[c.district].name : 'quartier'})`);
   for (const sq of city.squares) L.push(`- **${sq.name}**, petite place avec son puits (${city.districts[sq.district] ? city.districts[sq.district].name : 'quartier'})`);
   for (const i of city.inns) L.push(`- **Auberge « ${i.name} »**, près ${i.near}`);
   L.push('');

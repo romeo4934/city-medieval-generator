@@ -15,6 +15,11 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 
 **La ville a une histoire.** Elle naît autour du marché, sur un terrain plat, près d'un gué s'il y a une rivière, puis s'étend en évitant pentes et cours d'eau. L'**âge de la ville** (1, 2 ou 3 enceintes) décide de combien de fois elle a débordé de ses murs. Chaque enceinte suit le tracé le plus court à défendre (elle englobe pentes et collines au lieu de les contourner). Les anciennes enceintes restent à l'intérieur en anneaux, debout ou démolies par longs tronçons ; les parties tombées sont devenues des boulevards, et les rues ont percé des brèches dans le reste. Là où la rivière entre dans la ville, une porte d'eau avec sa herse. Comme à Nuremberg ou à Bruges, un **fossé** (en eau en plaine, à sec sur les hauteurs) fait le tour du rempart, franchi par un pont devant chaque porte, et des **tours en saillie** se succèdent tous les 38 m environ, comme à Carcassonne.
 
+**Trois formes de ville tirées de cas réels**, au choix dans le panneau :
+- **Bastide** (plan en damier), comme la ville basse de Carcassonne : îlots rectangulaires égaux, rues au cordeau, place centrale bordée de couverts (arcades) avec sa halle, Grand-Rue sur l'axe. Une bastide est fondée d'un coup : une seule enceinte.
+- **Double enceinte**, comme la Cité de Carcassonne : un mur extérieur plus bas précède le rempart, les lices s'étendent entre les deux, et une barbacane protège chaque porte.
+- **Ville haute et ville basse**, comme Provins : la ville haute, ancienne et dense, occupe le plateau dans sa propre enceinte avec le château et une collégiale ; la ville basse marchande s'étend au pied de la colline, dans la sienne ; une montée relie les deux.
+
 **Le parcellaire est organique.** Chaque quartier est redécoupé en petites cellules. Les îlots sont des assemblages irréguliers de ces cellules, séparés par les grandes routes, puis par des rues secondaires, des ruelles et des impasses tracées en travers des îlots trop grands. Les maisons ne bordent que les rues : les remparts, les berges et les cœurs d'îlots reçoivent des cours, des jardins, des arbres et des clôtures. Dehors, les champs sont en lanières (openfield).
 
 **Les maisons dépendent du quartier.**

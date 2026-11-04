@@ -13,6 +13,8 @@ const COLORS = {
   treeLine: '#8a9666',
   stall: '#d9b98e',
   dryMoat: '#d4d3b4',
+  lices: '#e6e1cf',
+  hall: '#b88f62',
   dryMoatLine: '#aea883',
   inn: '#a8573f',
   church: '#b3a6c2',
@@ -122,6 +124,12 @@ function renderSVG(city) {
     out.push(`<path d="${wallD}" fill="none" stroke="${edge}" stroke-width="${n1(2 * H + 3)}" stroke-linejoin="round"/>`);
     out.push(`<path d="${wallD}" fill="none" stroke="${body}" stroke-width="${n1(2 * H)}" stroke-linejoin="round"/>`);
     out.push(`<path d="${wallD}" fill="none" stroke="${COLORS.meadow}" stroke-width="${n1(2 * (H - city.moat.width))}" stroke-linejoin="round"/>`);
+    if (city.moat.lices) {
+      // Double enceinte : le mur extérieur (plus bas) puis les lices, bande de terre entre les deux murs
+      const Lw = 3.5 + city.moat.lices;
+      out.push(`<path d="${wallD}" fill="none" stroke="${COLORS.wall}" stroke-width="${n1(2 * (Lw + 2.5))}" stroke-linejoin="round"/>`);
+      out.push(`<path d="${wallD}" fill="none" stroke="${COLORS.lices}" stroke-width="${n1(2 * Lw)}" stroke-linejoin="round"/>`);
+    }
   }
 
   // Sol pavé intra-muros (les rues = ce qui reste visible entre les îlots)
@@ -161,6 +169,10 @@ function renderSVG(city) {
   // Place du marché
   fill(city.plaza, 'plaza', ` stroke="${COLORS.roadEdge}" stroke-width="1"`);
   fill(city.stalls, 'stall', ` stroke="${COLORS.buildingLine}" stroke-width="0.5"`);
+  // Bastide : couverts (arcades) le long de la place et halle au centre
+  if (city.arcades.length) out.push(`<path d="${pathD(city.arcades)}" fill="none" stroke="${COLORS.buildingLine}" stroke-width="1" stroke-dasharray="1.5 2.5"/>`);
+  fill(city.halls, 'hall', ` stroke="${COLORS.buildingLine}" stroke-width="1.2"`);
+  if (city.halls.length) out.push(`<path d="${city.halls.map(h => lineD([[(h[0][0] + h[3][0]) / 2, (h[0][1] + h[3][1]) / 2], [(h[1][0] + h[2][0]) / 2, (h[1][1] + h[2][1]) / 2]])).join('')}" stroke="${COLORS.buildingLine}" stroke-width="0.7"/>`);
   for (const [x, y, r] of city.wells) out.push(`<circle cx="${n1(x)}" cy="${n1(y)}" r="${n1(r)}" fill="${COLORS.water}" stroke="${COLORS.buildingLine}" stroke-width="1.2"/>`);
 
   // Bâtiments importants
@@ -224,7 +236,7 @@ function renderSVG(city) {
 
   // Citadelle
   if (city.citadel) {
-    out.push(`<path d="${city.citadel.edges.map(lineD).join('')}" fill="none" stroke="${COLORS.wall}" stroke-width="5.5" stroke-linecap="round"/>`);
+    out.push(`<path d="${city.citadel.edges.map(lineD).join('')}" fill="none" stroke="${COLORS.wall}" stroke-width="${city.twin ? 7 : 5.5}" stroke-linecap="round"/>`);
     const placed = [];
     for (const [a] of city.citadel.edges) {
       if (placed.some(t => Math.hypot(a[0] - t[0], a[1] - t[1]) < 25)) continue;
@@ -261,7 +273,23 @@ function renderSVG(city) {
         if (near(p, gatePts, 18) || near(p, towers, 22)) continue;
         towers.push(p);
         out.push(`<circle cx="${n1(p[0] + nx * 2.5)}" cy="${n1(p[1] + ny * 2.5)}" r="6" fill="${COLORS.wall}"/>`);
+        // Mur extérieur des lices : tours plus petites, décalées
+        if (city.moat && city.moat.lices && k % 2 === 0) {
+          const off = 3.5 + city.moat.lices + 1.25;
+          out.push(`<circle cx="${n1(p[0] + nx * (off + 2))}" cy="${n1(p[1] + ny * (off + 2))}" r="4" fill="${COLORS.wall}"/>`);
+        }
       }
+    }
+    // Barbacanes : un ouvrage avancé en demi-cercle devant chaque porte, sur le mur extérieur
+    if (city.moat && city.moat.lices) for (const g of city.gates) {
+      let ox = g.at[0] - wc[0], oy = g.at[1] - wc[1];
+      const L = Math.hypot(ox, oy) || 1; ox /= L; oy /= L;
+      const off = 3.5 + city.moat.lices + 2.5, r = 9;
+      const cx = g.at[0] + ox * (off + 3), cy = g.at[1] + oy * (off + 3);
+      const a0 = Math.atan2(oy, ox);
+      const arc = [];
+      for (let t = -Math.PI / 2; t <= Math.PI / 2 + 1e-6; t += Math.PI / 8) arc.push([cx + Math.cos(a0 + t) * r, cy + Math.sin(a0 + t) * r]);
+      out.push(`<path d="${lineD(arc)}" fill="none" stroke="${COLORS.wall}" stroke-width="4" stroke-linecap="round"/>`);
     }
   }
   gateMarks(city.gates, 12, COLORS.wall);
