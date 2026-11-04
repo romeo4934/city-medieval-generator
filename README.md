@@ -6,10 +6,11 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 
 ## Le modèle
 
-**Le relief décide de tout.** Une carte d'altitude (plaine, colline ou vallée) détermine :
+**Le relief décide de tout.** Une carte d'altitude (plaine, colline, plusieurs collines comme Athènes ou Rome, ou vallée) détermine :
 - où coulent les **rivières**, qui suivent les creux et ne remontent jamais une colline ;
 - où l'on **ne construit pas** : les pentes raides deviennent des vignes ou des jardins en terrasses ;
 - où se dresse la **citadelle** : sur le plateau du sommet, avec sa propre enceinte et une route qui y monte ;
+- avec plusieurs collines, la plus haute porte l'acropole ; les autres, plus basses, gardent leurs pentes en vignes et portent un petit sanctuaire avec leur nom (Mont des Corbeaux, Butte aux Moulins…), et la ville se glisse dans les vallons ;
 - par où passent les **routes**, qui contournent les pentes.
 
 **La ville a une histoire.** Elle naît autour du marché, sur un terrain plat, près d'un gué s'il y a une rivière, puis s'étend en évitant pentes et cours d'eau. L'**âge de la ville** (1, 2 ou 3 enceintes) décide de combien de fois elle a débordé de ses murs. Les anciennes enceintes restent à l'intérieur, en partie démolies, avec leurs vieilles portes.

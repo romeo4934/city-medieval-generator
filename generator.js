@@ -312,20 +312,42 @@ function generateCity(opts) {
   // Une seule fonction d'altitude décide de tout : pentes, rivières, citadelle, routes.
   const rT = rng('relief');
   const reliefRoll = rT();
-  const relief = ['plaine', 'colline', 'vallee'].includes(opts.relief) ? opts.relief
-    : reliefRoll < 0.3 ? 'plaine' : reliefRoll < 0.75 ? 'colline' : 'vallee';
+  const relief = ['plaine', 'colline', 'collines', 'vallee'].includes(opts.relief) ? opts.relief
+    : reliefRoll < 0.28 ? 'plaine' : reliefRoll < 0.6 ? 'colline' : reliefRoll < 0.78 ? 'collines' : 'vallee';
+  const hilly = relief === 'colline' || relief === 'collines';
   const ph = Array.from({ length: 8 }, () => rT() * Math.PI * 2);
   const hAng = rT() * Math.PI * 2, hDist = (0.45 + rT() * 0.35) * R;
   const hill = { c: [Math.cos(hAng) * hDist, Math.sin(hAng) * hDist], r0: (0.16 + rT() * 0.08) * R, band: (0.2 + rT() * 0.08) * R };
   const vAng = rT() * Math.PI, vOff = (rT() - 0.5) * 0.3 * R;
   const valley = { dir: [Math.cos(vAng), Math.sin(vAng)], off: vOff, a: (1.0 + rT() * 0.15) * R, band: 0.4 * R };
   const smoothstep = t => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+  // Collines : la principale (acropole) + pour "collines" 2 à 4 collines secondaires plus basses
+  const hills = [{ ...hill, h: 1 }];
+  if (relief === 'collines') {
+    const rH = rng('collines');
+    const want = 2 + Math.floor(rH() * 3);
+    const reach = hl => hl.r0 + hl.band;
+    for (let tries = 0; hills.length < want + 1 && tries < 80; tries++) {
+      const a = rH() * Math.PI * 2, d = (0.35 + rH() * 0.9) * R;
+      const hl = { c: [Math.cos(a) * d, Math.sin(a) * d], r0: (0.08 + rH() * 0.06) * R, band: (0.15 + rH() * 0.08) * R, h: 0.55 + rH() * 0.3, ph: rH() * 6.28 };
+      if (Math.max(Math.abs(hl.c[0]), Math.abs(hl.c[1])) > E - reach(hl)) continue;
+      if (hills.some(o => dist(o.c, hl.c) < (reach(o) + reach(hl)) * 0.95)) continue;
+      hills.push(hl);
+    }
+  }
+  const hillHeight = (k, x, y) => {
+    const hl = hills[k];
+    const dx = x - hl.c[0], dy = y - hl.c[1], d = Math.hypot(dx, dy), th = Math.atan2(dy, dx);
+    const p0 = k === 0 ? ph[3] : hl.ph, p1 = k === 0 ? ph[4] : hl.ph * 1.7;
+    const wob = 1 + 0.14 * Math.sin(3 * th + p0) + 0.07 * Math.sin(5 * th + p1);
+    return hl.h * (1 - smoothstep((d - hl.r0 * wob) / (hl.band * wob)));
+  };
   const elev = (x, y) => {
     let h = 0.03 * (Math.sin(x / 97 + ph[0]) + Math.sin(y / 131 + ph[1]) + Math.sin((x + y) / 173 + ph[2])) / 3;
-    if (relief === 'colline') {
-      const dx = x - hill.c[0], dy = y - hill.c[1], d = Math.hypot(dx, dy), th = Math.atan2(dy, dx);
-      const wob = 1 + 0.14 * Math.sin(3 * th + ph[3]) + 0.07 * Math.sin(5 * th + ph[4]);
-      h += 1 - smoothstep((d - hill.r0 * wob) / (hill.band * wob));
+    if (hilly) {
+      let m = 0;
+      for (let k = 0; k < hills.length; k++) m = Math.max(m, hillHeight(k, x, y));
+      h += m;
     } else if (relief === 'vallee') {
       const { dir, off, a, band } = valley;
       const across = -dir[1] * x + dir[0] * y - off, along = dir[0] * x + dir[1] * y;
@@ -336,13 +358,31 @@ function generateCity(opts) {
   };
   const slope = (x, y) => Math.hypot(elev(x + 3, y) - elev(x - 3, y), elev(x, y + 3) - elev(x, y - 3)) / 6;
   // Pente "raide" : plus de 40 % de la pente maximale du relief
-  const steepLimit = relief === 'colline' ? 0.6 / hill.band : relief === 'vallee' ? 0.6 / valley.band : Infinity;
+  const steepLimit = hilly ? 0.6 * Math.min(...hills.map(hl => hl.h / hl.band)) : relief === 'vallee' ? 0.6 / valley.band : Infinity;
   cells.forEach(c => {
     const ctr = Geo.centroid(c.ids.map(id => verts[id]));
     c.elev = elev(...c.site);
     c.steep = Math.max(slope(...c.site), slope(...ctr)) > steepLimit;
-    c.top = relief === 'colline' && !c.steep && c.elev > 0.8;
+    c.top = hilly && !c.steep && hillHeight(0, ...c.site) > 0.8;   // plateau de la colline principale
   });
+
+  // Sommets secondaires : un petit sanctuaire porte le nom de la colline
+  const HILL_NAMES = ['Mont des Corbeaux', 'Butte Saint-Clair', 'Mont aux Pendus', 'Colline des Vignes', 'Mont Brûlé',
+    'Butte aux Moulins', 'Mont des Muses', 'Colline du Guet', 'Mont Sacré', 'Butte des Lavandières', 'Mont des Oracles'];
+  const hillNames = [];
+  {
+    const rHN = rng('noms-collines');
+    const pool = HILL_NAMES.slice();
+    for (let k = 1; k < hills.length; k++) {
+      const name = pool.splice(Math.floor(rHN() * pool.length), 1)[0];
+      const top = cells.filter(c => !c.ids.some(id => Math.max(Math.abs(verts[id][0]), Math.abs(verts[id][1])) > E - 0.5))
+        .reduce((m, c) => (!m || hillHeight(k, ...c.site) > hillHeight(k, ...m.site) ? c : m), null);
+      if (top && hillHeight(k, ...top.site) > hills[k].h * 0.5) {
+        top.building = { id: 'sanctuaire', label: name };
+        hillNames.push({ name, at: hills[k].c });
+      }
+    }
+  }
 
   // ================= 3. Rivières : elles suivent les creux =================
   const entries = new Set();
@@ -412,7 +452,7 @@ function generateCity(opts) {
 
   // ================= 4. Le noyau : la place du marché =================
   // Terrain plat, près du centre, près d'un gué si une rivière passe.
-  const flat = c => !c.steep && !c.top && !touchesBorder(c);
+  const flat = c => !c.steep && !c.top && !c.building && !touchesBorder(c);
   const plaza = cells.filter(c => flat(c) && !touchesRiver(c))
     .reduce((m, c) => {
       const s = c2 => Math.hypot(...c2.site) + (rivers.length ? 0.6 * Math.max(0, riverDist(c2.site) - cellR) : 0);
@@ -523,7 +563,7 @@ function generateCity(opts) {
 
   // ================= 7. Citadelle sur le sommet =================
   let citadelSet = new Set(cells.filter(c => c.top && !touchesBorder(c)).map(c => c.index));
-  if (relief === 'colline' && !citadelSet.size) {
+  if (hilly && !citadelSet.size) {
     const highest = cells.filter(c => !touchesBorder(c) && c.type !== 'plaza').reduce((m, c) => (!m || c.elev > m.elev ? c : m), null);
     if (highest && highest.elev > 0.6) citadelSet = new Set([highest.index]);
   }
@@ -1129,7 +1169,7 @@ function generateCity(opts) {
     const G = 90, step = (2 * E) / G;
     const H = [];
     for (let j = 0; j <= G; j++) { H.push([]); for (let i = 0; i <= G; i++) H[j].push(elev(-E + i * step, -E + j * step)); }
-    const levels = relief === 'colline' ? [0.12, 0.3, 0.48, 0.66, 0.84] : [0.12, 0.3, 0.5, 0.7, 0.9];
+    const levels = hilly ? [0.12, 0.3, 0.48, 0.66, 0.84] : [0.12, 0.3, 0.5, 0.7, 0.9];
     for (const L of levels) {
       const segs = [];
       for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
@@ -1406,6 +1446,20 @@ function generateCity(opts) {
         if (rk) { const [a, b] = unkey(rk); const L = dist(verts[a], verts[b]); dir = [(verts[b][0] - verts[a][0]) / L, (verts[b][1] - verts[a][1]) / L]; }
         const ware = stripCut(Geo.inset(yard, 8), [-dir[1], dir[0]], [9, 14], rand).filter((_, i) => i % 2 === 0);
         S.shapes.push({ polys: ware.map(p => Geo.inset(p, 1)).filter(p => p.length >= 3), fill: 'tile', stroke: 0.8 });
+        break;
+      }
+      case 'sanctuaire': {
+        // Petit temple à colonnes orienté vers l'est, dans un enclos herbeux
+        S.yardColor = 'green';
+        const r = Math.min(ir * 0.8, 16);
+        const t = rect(ctr, [1, 0], r * 1.5, r * 0.8);
+        S.shapes.push({ polys: [t], fill: 'temple', stroke: 1.1 });
+        const cols = [];
+        for (let i = 0; i < 6; i++) for (const sy of [-1, 1]) cols.push(circle([ctr[0] - r * 0.6 + i * r * 0.24, ctr[1] + sy * r * 0.48], 0.9, 8));
+        S.shapes.push({ polys: cols, fill: 'stone', stroke: 0.4 });
+        S.yard = [Geo.scale(yard, 0.75)];
+        label.at = [ctr[0], ctr[1] + r * 0.9];
+        label.italic = true;
         break;
       }
       case 'moulin': {

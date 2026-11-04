@@ -21,7 +21,7 @@ function normalize(o) {
     seed: String(o.seed || randomSeed()),
     size: SIZES[o.size] ? o.size : 'moyenne',
     river: ['auto', 'non', 'oui', 'deux'].includes(o.river) ? o.river : 'auto',
-    relief: ['auto', 'plaine', 'colline', 'vallee'].includes(o.relief) ? o.relief : 'auto',
+    relief: ['auto', 'plaine', 'colline', 'collines', 'vallee'].includes(o.relief) ? o.relief : 'auto',
     age: ['auto', 'jeune', 'ancienne', 'tresancienne'].includes(o.age) ? o.age : 'auto',
     buildings: Array.isArray(o.buildings) ? o.buildings.filter(id => BUILDINGS.some(b => b.id === id)) : DEFAULT_BUILDINGS.slice(),
     names: Array.isArray(o.names) ? o.names.map(n => String(n || '')) : [],
@@ -93,7 +93,7 @@ function build(o) {
       <dt>Diamètre</dt><dd>≈ ${s.diameter} m</dd>
       <dt>Portes</dt><dd>${current.gateNames.map(g => g.text).join(', ')}</dd>
       <dt>Rivières</dt><dd>${s.rivers || 'aucune'}</dd>
-      <dt>Relief</dt><dd>${{ plaine: 'plaine', colline: 'colline' + (current.citadel ? ', citadelle au sommet' : ''), vallee: 'vallée' }[s.relief]}</dd>
+      <dt>Relief</dt><dd>${{ plaine: 'plaine', colline: 'colline' + (current.citadel ? ', citadelle au sommet' : ''), collines: 'plusieurs collines' + (current.citadel ? ', acropole sur la plus haute' : ''), vallee: 'vallée' }[s.relief]}</dd>
       <dt>Enceintes</dt><dd>${s.age}${s.age > 1 ? ' (les anciennes sont en partie démolies)' : ''}</dd>
     </dl>
     ${s.missing.length ? `<p class="warn">Non placé : ${s.missing.join(', ')}</p>` : ''}`;
