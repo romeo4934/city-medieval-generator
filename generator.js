@@ -1,223 +1,17 @@
 'use strict';
 /*
- * Génération d'une ville : données géométriques pures (aucun dessin ici).
+ * Génération d'une ville : données géométriques pures (aucun dessin ici). Dépend de geo.js et catalog.js.
  *
- * Principe :
- *  1. des points en spirale autour du centre → cellules de Voronoi (= îlots)
- *  2. les N premières cellules forment la ville, leur contour = les remparts
- *  3. portes sur les remparts, routes = plus court chemin le long des bords d'îlots
- *  4. chaque îlot est rétréci (les rues apparaissent entre eux) puis découpé en parcelles
+ * Étapes, chacune déduite des précédentes :
+ *   1. Îlots : Voronoi sur une spirale de points
+ *   2. Relief : plaine, colline(s) ou vallée → pentes, plateau, sommets
+ *   3. Rivières : elles suivent les creux
+ *   4-6. Marché, croissance de la ville, enceintes successives (enveloppes convexes)
+ *   7-9. Citadelle, portes, grandes routes et ponts
+ *   10-11. Bâtiments importants et quartiers, chacun placé selon une règle
+ *   12-14. Parcellaire fin : îlots irréguliers, rues, ruelles, maisons sur rue, cours et jardins
+ *   15. Noms (rues, routes, auberges), portes d'eau, brèches
  */
-
-// ---------- hasard reproductible ----------
-
-function seedHash(str) {
-  let h = 2166136261 >>> 0;
-  for (let i = 0; i < str.length; i++) {
-    h ^= str.charCodeAt(i);
-    h = Math.imul(h, 16777619);
-  }
-  return h >>> 0;
-}
-
-function mulberry32(a) {
-  return function () {
-    a = (a + 0x6d2b79f5) | 0;
-    let t = Math.imul(a ^ (a >>> 15), 1 | a);
-    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
-    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
-  };
-}
-
-// ---------- géométrie (polygones convexes = tableaux de [x, y]) ----------
-
-const Geo = {
-  area(p) {
-    let s = 0;
-    for (let i = 0; i < p.length; i++) {
-      const a = p[i], b = p[(i + 1) % p.length];
-      s += a[0] * b[1] - b[0] * a[1];
-    }
-    return s / 2;
-  },
-
-  centroid(p) {
-    let x = 0, y = 0, s = 0;
-    for (let i = 0; i < p.length; i++) {
-      const a = p[i], b = p[(i + 1) % p.length];
-      const c = a[0] * b[1] - b[0] * a[1];
-      s += c; x += (a[0] + b[0]) * c; y += (a[1] + b[1]) * c;
-    }
-    if (Math.abs(s) < 1e-9) {
-      return [p.reduce((t, q) => t + q[0], 0) / p.length, p.reduce((t, q) => t + q[1], 0) / p.length];
-    }
-    return [x / (3 * s), y / (3 * s)];
-  },
-
-  // Garde la partie du polygone où (q - P)·n >= 0
-  clip(poly, px, py, nx, ny) {
-    const out = [];
-    for (let i = 0; i < poly.length; i++) {
-      const A = poly[i], B = poly[(i + 1) % poly.length];
-      const da = (A[0] - px) * nx + (A[1] - py) * ny;
-      const db = (B[0] - px) * nx + (B[1] - py) * ny;
-      if (da >= 0) out.push(A);
-      if ((da >= 0) !== (db >= 0)) {
-        const t = da / (da - db);
-        out.push([A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t]);
-      }
-    }
-    return out;
-  },
-
-  // Rétrécit un polygone convexe ; dists = un nombre ou une distance par côté
-  inset(poly, dists) {
-    const s = Geo.area(poly) > 0 ? 1 : -1;
-    let out = poly;
-    for (let i = 0; i < poly.length; i++) {
-      const A = poly[i], B = poly[(i + 1) % poly.length];
-      const dx = B[0] - A[0], dy = B[1] - A[1];
-      const L = Math.hypot(dx, dy);
-      if (L < 1e-6) continue;
-      const nx = (-dy / L) * s, ny = (dx / L) * s;
-      const d = typeof dists === 'number' ? dists : dists[i];
-      out = Geo.clip(out, A[0] + nx * d, A[1] + ny * d, nx, ny);
-      if (out.length < 3) return [];
-    }
-    return out;
-  },
-
-  scale(p, k) {
-    const c = Geo.centroid(p);
-    return p.map(q => [c[0] + (q[0] - c[0]) * k, c[1] + (q[1] - c[1]) * k]);
-  },
-
-  distToSegment(p, a, b) {
-    const dx = b[0] - a[0], dy = b[1] - a[1];
-    const L2 = dx * dx + dy * dy;
-    let t = L2 ? ((p[0] - a[0]) * dx + (p[1] - a[1]) * dy) / L2 : 0;
-    t = Math.max(0, Math.min(1, t));
-    return Math.hypot(p[0] - a[0] - t * dx, p[1] - a[1] - t * dy);
-  },
-};
-
-// Lissage de Chaikin (garde les extrémités)
-function smooth(pts, iterations) {
-  for (let it = 0; it < iterations; it++) {
-    const out = [pts[0]];
-    for (let i = 0; i + 1 < pts.length; i++) {
-      const a = pts[i], b = pts[i + 1];
-      out.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
-    }
-    out.push(pts[pts.length - 1]);
-    pts = out;
-  }
-  return pts;
-}
-
-// Cellule de Voronoi de chaque point, par découpages successifs d'un carré
-function voronoi(sites, E) {
-  const box = [[-E, -E], [E, -E], [E, E], [-E, E]];
-  return sites.map((s, i) => {
-    let poly = box;
-    const others = [];
-    sites.forEach((t, j) => { if (j !== i) others.push([j, (t[0] - s[0]) ** 2 + (t[1] - s[1]) ** 2]); });
-    others.sort((a, b) => a[1] - b[1]);
-    for (const [j, d2] of others) {
-      let maxR2 = 0;
-      for (const q of poly) maxR2 = Math.max(maxR2, (q[0] - s[0]) ** 2 + (q[1] - s[1]) ** 2);
-      if (d2 / 4 > maxR2) break; // plus aucun voisin ne peut couper la cellule
-      const t = sites[j];
-      poly = Geo.clip(poly, (s[0] + t[0]) / 2, (s[1] + t[1]) / 2, s[0] - t[0], s[1] - t[1]);
-    }
-    return poly;
-  });
-}
-
-// Plus court chemin (Dijkstra simple, quelques centaines de sommets)
-function shortestPaths(adj, nVerts, sources) {
-  const dist = new Float64Array(nVerts).fill(Infinity);
-  const prev = new Int32Array(nVerts).fill(-1);
-  const done = new Uint8Array(nVerts);
-  for (const s of sources) dist[s] = 0;
-  for (;;) {
-    let u = -1, best = Infinity;
-    for (let v = 0; v < nVerts; v++) if (!done[v] && dist[v] < best) { best = dist[v]; u = v; }
-    if (u < 0) break;
-    done[u] = 1;
-    for (const e of adj[u] || []) {
-      const d = best + e.cost;
-      if (d < dist[e.to]) { dist[e.to] = d; prev[e.to] = u; }
-    }
-  }
-  return { dist, prev };
-}
-
-function tracePath(prev, from) {
-  const path = [from];
-  let cur = from;
-  while (prev[cur] >= 0) { cur = prev[cur]; path.push(cur); }
-  return path;
-}
-
-// ---------- noms ----------
-
-const NAME_START = ['Val', 'Mont', 'Roc', 'Bel', 'Aube', 'Cor', 'Lis', 'Fer', 'Mar', 'Ys', 'Gal', 'Bran',
-  'Ost', 'Vire', 'Haute', 'Clar', 'Dun', 'Sain', 'Pierre', 'Grand', 'Noir', 'Or'];
-const NAME_END = ['beau', 'fort', 'mère', 'lune', 'bourg', 'morte', 'ange', 'gard', 'mont', 'vin', 'brume',
-  'ombre', 'val', 'roche', 'castel', 'fleur', 'lac', 'sel', 'vent'];
-
-function cityName(rand) {
-  for (;;) {
-    const a = NAME_START[Math.floor(rand() * NAME_START.length)];
-    const b = NAME_END[Math.floor(rand() * NAME_END.length)];
-    if (a.toLowerCase() !== b) return a + b;
-  }
-}
-
-// ---------- catalogue ----------
-
-const SIZES = {
-  petite:   { cells: 12, gates: 3, districts: 3 },
-  moyenne:  { cells: 25, gates: 4, districts: 5 },
-  grande:   { cells: 45, gates: 5, districts: 7 },
-  capitale: { cells: 70, gates: 6, districts: 9 },
-};
-
-const BUILDINGS = [
-  { id: 'temple',     label: 'Cathédrale' },
-  { id: 'chateau',    label: 'Château' },
-  { id: 'palais',     label: 'Palais' },
-  { id: 'guildes',    label: 'Halle des guildes' },
-  { id: 'universite', label: 'Université' },
-  { id: 'caserne',    label: 'Caserne' },
-  { id: 'prison',     label: 'Prison' },
-  { id: 'hospice',    label: 'Hospice' },
-  { id: 'bains',      label: 'Bains publics' },
-  { id: 'arene',      label: 'Arène' },
-  { id: 'cimetiere',  label: 'Cimetière' },
-  { id: 'port',       label: 'Port' },
-  { id: 'monastere',  label: 'Monastère' },
-  { id: 'moulin',     label: 'Moulin' },
-];
-const DEFAULT_BUILDINGS = ['temple', 'chateau'];
-
-const DISTRICT_NAMES = ['Quartier des Marchands', 'Quartier des Artisans', 'Quartier des Forgerons',
-  'Quartier des Tisserands', 'Quartier des Orfèvres', 'Les Halles', 'Quartier des Potiers',
-  'Quartier des Bouchers', 'Quartier des Cordiers', 'Quartier des Charpentiers',
-  'Quartier des Verriers', 'Quartier des Selliers', 'Les Ruelles'];
-const COMPASS = ['Est', 'Sud-Est', 'Sud', 'Sud-Ouest', 'Ouest', 'Nord-Ouest', 'Nord', 'Nord-Est'];
-const GATE_EXTRA = ['des Corbeaux', 'du Roi', 'aux Loups', 'des Vignes', 'de la Reine', 'du Pèlerin', 'des Morts'];
-
-// Maisons selon la zone : largeur de façade, profondeur, matériaux (pierre / colombage / chaume),
-// dépendances dans les cours, sol des cours
-const ZONES = {
-  vieille:  { front: [5, 8],  depth: [13, 20], mat: [0.55, 0.45, 0],    annex: 0.6,  court: 'court',  people: 9 },
-  bourg:    { front: [6, 10], depth: [10, 15], mat: [0.25, 0.68, 0.07], annex: 0.4,  court: 'yard',   people: 7 },
-  neuf:     { front: [7, 12], depth: [8, 12],  mat: [0.12, 0.68, 0.2],  annex: 0.2,  court: 'garden', people: 6 },
-  faubourg: { front: [9, 15], depth: [7, 10],  mat: [0, 0.4, 0.6],      annex: 0.3,  court: 'garden', people: 5 },
-  citadelle:{ front: [10, 18], depth: [8, 12], mat: [1, 0, 0],          annex: 0.1,  court: 'court',  people: 4 },
-};
 
 // ---------- la ville ----------
 
@@ -614,6 +408,18 @@ function generateCity(opts) {
     }
     if (best >= 0 && bd < Math.PI / size.gates) gates.push(best);
   }
+  // Second passage si la ville manque de portes (versants raides partout) : on accepte une porte
+  // face à une pente, la route la contournera
+  if (gates.length < 2) {
+    const loose = wall.filter(vid => (outsideOf(vid).length === 1 || insideOf(vid).length === 1) && riverDist(verts[vid]) > 20);
+    while (gates.length < 2) {
+      const far = loose.filter(v => !gates.includes(v))
+        .map(v => [v, gates.length ? Math.min(...gates.map(g => dist(verts[g], verts[v]))) : -dist(verts[v], [0, 0])])
+        .sort((x, y) => y[1] - x[1])[0];
+      if (!far) break;
+      gates.push(far[0]);
+    }
+  }
 
   // Coupe une cellule en deux, du sommet v vers le sommet le plus éloigné
   const farOf = (X, v) => {
@@ -684,10 +490,10 @@ function generateCity(opts) {
   }
 
   const fromPlaza = shortestPaths(innerAdj, verts.length, plaza.ids);
-  const roads = [];
+  const roads = [], roadMeta = [];
   const exits = [...entries];
-  for (const g of gates) {
-    roads.push(tracePath(fromPlaza.prev, g));
+  for (const [gi, g] of gates.entries()) {
+    roads.push(tracePath(fromPlaza.prev, g)); roadMeta.push({ kind: 'inner', gate: gi });
     const out = shortestPaths(outerAdj, verts.length, [g]);
     const gv = verts[g], gl = Math.hypot(gv[0], gv[1]) || 1;
     const T = [(gv[0] / gl) * E * 1.4, (gv[1] / gl) * E * 1.4];
@@ -697,7 +503,7 @@ function generateCity(opts) {
       const d = dist(verts[v], T) + out.dist[v] * 0.3;
       if (d < bd) { bd = d; best = v; }
     }
-    if (best >= 0) roads.push(tracePath(out.prev, best).reverse());
+    if (best >= 0) { roads.push(tracePath(out.prev, best).reverse()); roadMeta.push({ kind: 'outer', gate: gi }); }
   }
   // Route du marché à la citadelle (elle grimpe la pente)
   let citadelGate = -1;
@@ -705,7 +511,7 @@ function generateCity(opts) {
     const sp = shortestPaths(allAdj, verts.length, plaza.ids);
     const rim = new Set(boundary(citadelSet).map(([a]) => a));
     for (const v of rim) if (isFinite(sp.dist[v]) && (citadelGate < 0 || sp.dist[v] < sp.dist[citadelGate])) citadelGate = v;
-    if (citadelGate >= 0) roads.push(tracePath(sp.prev, citadelGate));
+    if (citadelGate >= 0) { roads.push(tracePath(sp.prev, citadelGate)); roadMeta.push({ kind: 'citadel' }); }
   }
 
   const bridges = [];
@@ -846,9 +652,9 @@ function generateCity(opts) {
     if (has('plaza')) auto = fixed('Vieille Ville');
     if (!auto && d.ring === 0 && has('temple')) auto = fixed('Quartier de la Cathédrale');
     if (!auto && d.ring === 0) auto = take(['Quartier du Marché', 'Le Vieux Bourg', 'Quartier de la Halle']);
+    if (!auto && has('port')) auto = fixed('Les Quais');
     if (!auto && riverDistricts.length && riverDistricts[0].k === k) auto = fixed('Quartier des Tanneurs'); // en aval : ça sent
     if (!auto && riverDistricts.length > 1 && riverDistricts[riverDistricts.length - 1].k === k) auto = fixed('Quartier des Meuniers');
-    if (!auto && has('port')) auto = fixed('Les Quais');
     if (!auto && has('universite')) auto = fixed('Quartier des Écoles');
     if (!auto && nearHill) auto = take(['Sous-le-Château', 'Le Pied-du-Mont']);
     if (!auto && d.ring === lastRing && lastRing > 0 && rN() < 0.5) auto = take(['Bourg-Neuf', 'La Ville-Neuve']);
@@ -1048,7 +854,7 @@ function generateCity(opts) {
 
   // --- rues secondaires, ruelles et impasses ---
   const fArea = fcells.map(fc => Math.abs(Geo.area(fc.ids.map(id => fverts[id]))));
-  const MAX_BLOCK = { vieille: 5500, bourg: 8000, neuf: 12000, citadelle: 9000 };
+  const MAX_BLOCK = { vieille: 4200, bourg: 7000, neuf: 11000, citadelle: 9000 };
   const blocksNow = () => {
     const parent = fcells.map((_, i) => i);
     const find = i => (parent[i] === i ? i : (parent[i] = find(parent[i])));
@@ -1072,6 +878,7 @@ function generateCity(opts) {
     return path;
   };
   const rStreets = rng('rues|' + opts.size);
+  const streetPaths = [];
   const cutBlock = (group, cls, deadEnd) => {
     const set = new Set(group);
     const internal = [], border = new Set();
@@ -1115,6 +922,7 @@ function generateCity(opts) {
     const path = localPath(adj, s, t);
     if (!path || path.length < 2) return false;
     for (let k = 0; k + 1 < path.length; k++) fclass.set(fek(path[k], path[k + 1]), cls);
+    streetPaths.push({ cls, deadEnd: !!deadEnd, path, coarse: fcells[group[0]].coarse });
     return true;
   };
   {
@@ -1164,10 +972,12 @@ function generateCity(opts) {
     ridges: [], annexes: [], lotLines: [], fences: [], trees: [],
     terraces: [], vineyards: [], fieldStrips: [[], [], []], meadows: [],
     plaza: [], stalls: [], wells: [], specials: [], labels: [],
+    hills: hillNames.map(h => h.name), churches: [], inns: [], waterGates: [], streetLabels: [], streets: [], neighbours: [],
     contours: [],
     gateNames: [],
     districts: districts.map(d => ({
-      name: d.name, auto: d.auto, ring: d.ring,
+      name: d.name, auto: d.auto, ring: d.ring, zone: zoneOf(d.cells[0]), size: d.cells.length,
+      nearRiver: d.cells.some(c => touchesRiver(c)), onSlope: d.cells.some(c => neighbours(c).some(n => n.steep)),
       at: Geo.centroid(d.labelCell.ids.map(id => verts[id])),
     })),
   };
@@ -1326,6 +1136,26 @@ function generateCity(opts) {
         placed.push(house);
         addHouse(house, zone, rand, rich);
         count++;
+        if (cls === 'main' && !suburb) mainHouses.push({ poly: house, at: Geo.centroid(house), district: currentDistrict });
+        // Arrière-corps : un second bâtiment au fond de la cour (logis, atelier), surtout en vieille ville
+        let rearBuilt = false;
+        if (rand() < Z.rear) {
+          const gap = between(rand, [2, 4]), d2 = between(rand, [5, 9]);
+          if (d + gap + d2 < reach * 0.85) {
+            const a0 = d + gap, a1 = d + gap + d2, k0 = 0.05, k1 = 0.95;
+            const Q0 = [P0[0] + u[0] * w * k0, P0[1] + u[1] * w * k0], Q1 = [P0[0] + u[0] * w * k1, P0[1] + u[1] * w * k1];
+            const r1 = intersectConvex([[Q0[0] + n[0] * a0, Q0[1] + n[1] * a0], [Q1[0] + n[0] * a0, Q1[1] + n[1] * a0],
+              [Q1[0] + n[0] * a1, Q1[1] + n[1] * a1], [Q0[0] + n[0] * a1, Q0[1] + n[1] * a1]], block);
+            if (r1.length >= 3 && Math.abs(Geo.area(r1)) > 15 && !placed.some(p => overlaps(p, r1))) {
+              placed.push(r1);
+              addHouse(r1, zone, rand, false);
+              const rr = ridgeOf(r1, u);
+              if (rr) city.ridges.push(rr);
+              count++;
+              rearBuilt = true;
+            }
+          }
+        }
         const ridge = ridgeOf(house, w < d ? n : u);   // pignon sur rue si la façade est étroite
         if (ridge) city.ridges.push(ridge);
         // Limite de parcelle derrière la maison
@@ -1334,7 +1164,7 @@ function generateCity(opts) {
           city.lotLines.push([[P1[0] + n[0] * d, P1[1] + n[1] * d], [P1[0] + n[0] * len, P1[1] + n[1] * len]]);
         }
         // Dépendance au fond de la cour
-        if (rand() < Z.annex) {
+        if (!rearBuilt && rand() < Z.annex) {
           const ad = between(rand, [3, 5.5]), gap = between(rand, [1.5, 4]);
           const cc = [mid[0] + n[0] * (d + gap + ad / 2), mid[1] + n[1] * (d + gap + ad / 2)];
           const shed = rect(cc, u, w * between(rand, [0.4, 0.75]), ad);
@@ -1371,6 +1201,27 @@ function generateCity(opts) {
     });
   };
 
+  // Églises de paroisse : une par quartier (sauf celui de la cathédrale), sur un îlot proche du cœur du quartier
+  const mainHouses = [];
+  let currentDistrict = null;
+  {
+    const rC = rng('paroisses');
+    const saints = SAINTS.slice();
+    districts.forEach((d, k) => {
+      if (d.cells.some(c => c.building && c.building.id === 'temple')) return;
+      const mid = d.labelCell.site;
+      const cands = fcells.filter(fc => fc.coarse.district === k && fc.coarse.inner && !fc.coarse.citadel && !fc.suburb
+        && fArea[fc.index] > 450 && fArea[fc.index] < 3200);
+      if (!cands.length) return;
+      const fc = cands.reduce((m, f) => {
+        const df = dist(Geo.centroid(f.ids.map(id => fverts[id])), mid), dm = dist(Geo.centroid(m.ids.map(id => fverts[id])), mid);
+        return df + (f.coarse === d.labelCell ? 40 : 0) < dm + (m.coarse === d.labelCell ? 40 : 0) ? f : m;
+      });
+      fc.church = saints.splice(Math.floor(rC() * saints.length), 1)[0] || 'Saint-Pierre';
+      fc.churchDistrict = k;
+    });
+  }
+
   let people = 0;
   for (const fc of fcells) {
     const poly = fc.ids.map(id => fverts[id]);
@@ -1385,6 +1236,25 @@ function generateCity(opts) {
       continue;
     }
     const rand = rng('parcelle|' + opts.size + '|' + fc.coarse.index + '|' + fc.index);
+    if (fc.church) {
+      // Église orientée vers l'est (chœur et abside à l'est, clocher à l'ouest), dans son cimetière
+      city.ground.garden.push(block);
+      const [ctr, ir] = inradius(block);
+      const len = Math.min(ir * 1.7, 30), wid = len * 0.34;
+      const nave = rect(ctr, [1, 0], len, wid);
+      const apse = circle([ctr[0] + len / 2, ctr[1]], wid / 2, 16);
+      const tower = rect([ctr[0] - len / 2 - wid * 0.3, ctr[1]], [1, 0], wid * 0.7, wid * 0.7);
+      const tombs = [];
+      for (let k = 0; k < 14; k++) {
+        const p = [ctr[0] + (rand() - 0.5) * ir * 1.6, ctr[1] + (rand() - 0.5) * ir * 1.6];
+        const t = rect(p, [1, 0], 1.6, 2.8);
+        if (t.every(q => inside(block, q)) && !overlaps(t, nave) && !overlaps(t, tower) && !overlaps(t, rect([ctr[0] + len / 2, ctr[1]], [1, 0], wid, wid))) tombs.push(t);
+      }
+      city.churches.push({ name: fc.church, district: fc.churchDistrict, nave, apse, tower, tombs, yard: block, at: [ctr[0], ctr[1] + wid * 0.5 + 6] });
+      people += 0;
+      continue;
+    }
+    currentDistrict = fc.coarse.inner && !fc.coarse.citadel ? fc.coarse.district : null;
     if (fc.suburb) city.suburbGround.push(block);
     people += frontage(block, classesAfterInset(poly, dists, classes, block), fc.zone, rand, fc.suburb) * ZONES[fc.zone].people;
   }
@@ -1395,7 +1265,7 @@ function generateCity(opts) {
     wallEdges.has(k) ? 7 : citadelEdges.has(k) ? 6 : oldWallEdges.has(k) ? 4 : roadEdges.has(k) ? 5.5 : 3.5);
 
   const special = (b, yard, rand, c) => {
-    const S = { id: b.id, yard: [yard], yardColor: 'court', shapes: [] };
+    const S = { id: b.id, label: b.label, district: c.district, inner: !!c.inner, yard: [yard], yardColor: 'court', shapes: [] };
     const [ctr, ir] = inradius(yard);
     const label = { at: ctr, text: b.label };
     const fill = color => ({ fill: color, stroke: 1.1 });
@@ -1531,6 +1401,108 @@ function generateCity(opts) {
     }
   }
 
+  // ================= 15. Noms : rues, routes, auberges ; portes d'eau ; brèches =================
+  {
+    const rNm = rng('noms-rues|' + opts.size);
+    const usedNames = new Set();
+    const pickFrom = list => {
+      const free = list.filter(x => !usedNames.has(x));
+      if (!free.length) return null;
+      const v = free[Math.floor(rNm() * free.length)];
+      usedNames.add(v);
+      return v;
+    };
+    const claim = v => (usedNames.has(v) ? null : (usedNames.add(v), v));
+    const polyLen = pts => pts.reduce((acc, p, i) => (i ? acc + dist(pts[i - 1], p) : 0), 0);
+    const gateText = gi => (city.gateNames[gi] ? city.gateNames[gi].text : 'Porte');
+
+    // Grandes rues : de chaque porte au marché ; la plus longue est la Grand-Rue
+    const inner = roadMeta.map((m, i) => ({ m, i, pts: roads[i].map(id => verts[id]) })).filter(x => x.m.kind === 'inner');
+    const longest = inner.reduce((b, x) => (!b || polyLen(x.pts) > polyLen(b.pts) ? x : b), null);
+    for (const x of inner) {
+      const name = x === longest ? 'Grand-Rue' : 'Rue de la ' + gateText(x.m.gate);
+      usedNames.add(name);
+      city.streets.push({ name, kind: 'grande rue', length: Math.round(polyLen(x.pts)), detail: 'du Marché à la ' + gateText(x.m.gate) });
+      city.streetLabels.push({ name, points: x.pts, cls: 'main' });
+    }
+    roadMeta.forEach((m, i) => {
+      const pts = roads[i].map(id => verts[id]);
+      if (m.kind === 'citadel') {
+        const name = wanted.includes('chateau') ? 'Montée du Château' : 'Montée de la Citadelle';
+        city.streets.push({ name, kind: 'montée', length: Math.round(polyLen(pts)), detail: 'du Marché à la citadelle' });
+        city.streetLabels.push({ name, points: pts, cls: 'main' });
+      } else if (m.kind === 'outer') {
+        const town = cityName(rng('voisin|' + m.gate));
+        const name = 'Route de ' + town;
+        city.neighbours.push({ name: town, gate: gateText(m.gate) });
+        city.streets.push({ name, kind: 'route', length: Math.round(polyLen(pts)), detail: 'sort par la ' + gateText(m.gate) });
+        city.streetLabels.push({ name, points: pts.slice(Math.floor(pts.length / 2)), cls: 'road' });
+      }
+    });
+
+    // Rues secondaires, ruelles, impasses : le nom vient du quartier, de son église, du relief
+    for (const sp of streetPaths) {
+      const pts = sp.path.map(id => fverts[id]);
+      const L = polyLen(pts);
+      const c = sp.coarse, d = districts[c.district], zone = zoneOf(c);
+      let name = null;
+      if (sp.deadEnd) name = 'Impasse ' + (pickFrom(DEADEND_NAMES) || 'du ' + (city.streets.length + 1));
+      else if (sp.cls === 'ruelle') name = 'Ruelle ' + (pickFrom(ALLEY_NAMES) || 'n° ' + (city.streets.length + 1));
+      else {
+        const trade = d && /^Quartier (des|du|de la) (.+)$/.exec(d.name);
+        const church = city.churches.find(ch => ch.district === c.district);
+        const options = [];
+        if (trade && !/Porte|Marché|Halle|Château|Cathédrale/.test(trade[2])) options.push('Rue ' + trade[1] + ' ' + trade[2]);
+        if (church) options.push('Rue ' + church.name);
+        if (zone === 'neuf') options.push('Rue Neuve');
+        if (c.elev > 0.35) options.push('Rue Haute');
+        if (rivers.length && riverDist(c.site) < cellR) options.push('Rue Basse', 'Rue du Quai');
+        for (const o of options) if (rNm() < 0.6 && (name = claim(o))) break;
+        if (!name) name = 'Rue ' + (pickFrom(STREET_NAMES) || 'n° ' + (city.streets.length + 1));
+      }
+      city.streets.push({ name, kind: sp.deadEnd ? 'impasse' : sp.cls, length: Math.round(L), detail: d ? d.name : '' });
+      if (L > (sp.cls === 'rue' ? 45 : 32)) city.streetLabels.push({ name, points: pts, cls: sp.cls });
+    }
+
+    // Auberges : sur les grandes rues, près de chaque porte et près du marché
+    const targets = [plaza.site, ...gates.map(g => verts[g])];
+    const innNames = INN_NAMES.slice();
+    const taken = new Set();
+    for (const T of targets.slice(0, 6)) {
+      let best = null, bd = Infinity;
+      mainHouses.forEach((h, i) => { if (!taken.has(i) && dist(h.at, T) < bd) { bd = dist(h.at, T); best = i; } });
+      if (best === null || bd > cellR * 3) continue;
+      taken.add(best);
+      const name = innNames.splice(Math.floor(rNm() * innNames.length), 1)[0];
+      city.inns.push({ name, district: mainHouses[best].district, poly: mainHouses[best].poly, at: mainHouses[best].at, near: T === plaza.site ? 'du marché' : 'de la ' + gateText(gates.findIndex(g => verts[g] === T)) });
+    }
+
+    // Portes d'eau : là où la rivière entre dans la ville en passant sous le rempart
+    const insideEdge = key => (edgeCells.get(key) || []).every(ci => cells[ci].inner);
+    const outsideEdge = key => (edgeCells.get(key) || []).every(ci => !cells[ci].inner);
+    for (const rv of rivers) {
+      for (let j = 1; j + 1 < rv.path.length; j++) {
+        const v = rv.path[j];
+        if (!wall.includes(v)) continue;
+        const e1 = ek(rv.path[j - 1], v), e2 = ek(v, rv.path[j + 1]);
+        const entersTown = (insideEdge(e1) || insideEdge(e2)) && (outsideEdge(e1) || outsideEdge(e2) || wallEdges.has(e1) || wallEdges.has(e2));
+        if (!entersTown) continue;
+        const a = verts[rv.path[j - 1]], b = verts[rv.path[j + 1]], L = dist(a, b) || 1;
+        city.waterGates.push({ at: verts[v], dir: [(b[0] - a[0]) / L, (b[1] - a[1]) / L], w: rv.w });
+      }
+    }
+
+    // Brèches : là où une rue franchit un tronçon de vieux mur encore debout
+    const streetAt = new Set();
+    for (const [key, cls] of fclass) {
+      if (!['rue', 'ruelle', 'main', 'boulevard', 'place'].includes(cls)) continue;
+      for (const id of key.split('_').map(Number)) streetAt.add(fverts[id][0].toFixed(1) + ',' + fverts[id][1].toFixed(1));
+    }
+    const gateAt = new Set(oldGates.map(g => g.v));
+    const breach = v => !gateAt.has(v) && streetAt.has(verts[v][0].toFixed(1) + ',' + verts[v][1].toFixed(1));
+    city.oldWalls = oldWalls.map(w => ({ a: verts[w.a], b: verts[w.b], standing: w.standing, breachA: w.standing && breach(w.a), breachB: w.standing && breach(w.b) }));
+  }
+
   // La citadelle a son étiquette
   if (citadelSet.size > 1) {
     const free = cells.filter(c => c.citadel && !c.building);
@@ -1549,6 +1521,7 @@ function generateCity(opts) {
     diameter: Math.round((Math.max(...wall.map(id => verts[id][0])) - Math.min(...wall.map(id => verts[id][0]))) / 10) * 10,
     streets: [...fclass.values()].filter(v => v === 'rue').length,
     alleys: [...fclass.values()].filter(v => v === 'ruelle').length,
+    churches: city.churches.length,
     missing,
   };
   return city;

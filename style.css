@@ -134,3 +134,10 @@ main {
   #map svg { height: auto; max-height: none; aspect-ratio: 1; }
   .zoom { right: 16px; bottom: 16px; }
 }
+
+.sheet { font-size: 13px; line-height: 1.45; }
+.sheet h2 { font-size: 18px; margin: 4px 0 6px; }
+.sheet h3 { font-size: 14px; margin: 14px 0 4px; color: #6b604f; }
+.sheet p { margin: 4px 0; }
+.sheet ul { margin: 4px 0; padding-left: 18px; }
+.sheet li { margin-bottom: 3px; }

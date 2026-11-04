@@ -98,6 +98,7 @@ function build(o) {
     </dl>
     ${s.missing.length ? `<p class="warn">Non placé : ${s.missing.join(', ')}</p>` : ''}`;
 
+  $('sheet').innerHTML = sheetToHtml(citySheet(current));
   $('districts').innerHTML = current.districts.map((d, k) => `
     <label class="district">
       <input type="text" data-k="${k}" value="${escAttr(opts.names[k] || '')}" placeholder="${escAttr(d.auto)}">
@@ -235,6 +236,7 @@ $('file').onchange = async () => {
 
 // ---------- export image (toujours la carte entière) ----------
 
+$('md').onclick = () => download(new Blob([citySheet(current)], { type: 'text/markdown' }), fileBase() + '.md');
 $('svg').onclick = () => download(new Blob([renderSVG(current)], { type: 'image/svg+xml' }), fileBase() + '.svg');
 
 $('png').onclick = () => {

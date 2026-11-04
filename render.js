@@ -12,6 +12,8 @@ const COLORS = {
   tree: '#b7c294',
   treeLine: '#8a9666',
   stall: '#d9b98e',
+  inn: '#a8573f',
+  church: '#b3a6c2',
   meadow: '#dfe0c5',
   vine: '#d3d6b0',
   vineDot: '#8f9a63',
@@ -60,6 +62,20 @@ const pathD = polys => polys.map(p => 'M' + p.map(q => n1(q[0]) + ' ' + n1(q[1])
 const lineD = pts => 'M' + pts.map(q => n1(q[0]) + ' ' + n1(q[1])).join('L');
 const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 const col = c => (c === 'none' ? 'none' : COLORS[c] || c);
+// Lissage léger d'une ligne (pour écrire les noms de rues le long des courbes)
+const smoothLine = pts => {
+  let p = pts;
+  for (let it = 0; it < 2; it++) {
+    const o = [p[0]];
+    for (let i = 0; i + 1 < p.length; i++) {
+      const a = p[i], b = p[i + 1];
+      o.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
+    }
+    o.push(p[p.length - 1]);
+    p = o;
+  }
+  return p;
+};
 
 function renderSVG(city) {
   const E = city.E;
@@ -73,6 +89,13 @@ function renderSVG(city) {
     .lbl{font-size:${z(fs)};fill:${COLORS.ink};text-anchor:middle;dominant-baseline:middle;paint-order:stroke;stroke:#fff;stroke-width:${z(fs / 4)};stroke-linejoin:round}
     .qtr{font-size:${z(fs * 1.15)};font-style:italic;fill:#5b4f3d;text-anchor:middle;dominant-baseline:middle;paint-order:stroke;stroke:${COLORS.street};stroke-width:${z(fs / 3)};stroke-linejoin:round;letter-spacing:.04em}
     .gate{font-size:${z(fs * 0.8)};fill:${COLORS.ink};text-anchor:middle;dominant-baseline:middle;paint-order:stroke;stroke:${COLORS.land};stroke-width:${z(fs / 4)};stroke-linejoin:round}
+    .small{font-size:${z(fs * 0.68)};fill:${COLORS.ink};text-anchor:middle;dominant-baseline:middle;paint-order:stroke;stroke:#fff;stroke-width:${z(fs / 5)};stroke-linejoin:round}
+    .inn{font-size:${z(fs * 0.62)};font-style:italic;fill:#7a3a26;text-anchor:middle;dominant-baseline:middle;paint-order:stroke;stroke:#fff;stroke-width:${z(fs / 5)};stroke-linejoin:round}
+    .st-main{font-size:${z(fs * 0.62)};fill:#4a4036;letter-spacing:.03em}
+    .st-rue{font-size:${z(fs * 0.5)};fill:#5b5044}
+    .st-ruelle{font-size:${z(fs * 0.42)};fill:#6b604f;font-style:italic}
+    .st-road{font-size:${z(fs * 0.55)};fill:#6b604f;font-style:italic}
+    .st{paint-order:stroke;stroke:${COLORS.street};stroke-width:${z(fs / 6)};stroke-linejoin:round;dominant-baseline:middle}
     .leg{font-size:${n1(fs * 0.85)}px;fill:${COLORS.ink};dominant-baseline:middle}
   </style>`);
   out.push(`<defs><pattern id="cmg-vines" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><rect width="7" height="7" fill="${COLORS.vine}"/><circle cx="3.5" cy="3.5" r="1.1" fill="${COLORS.vineDot}"/></pattern></defs>`);
@@ -148,16 +171,28 @@ function renderSVG(city) {
     }
   }
 
+  // Églises de paroisse : cimetière, nef, abside à l'est, clocher à l'ouest
+  for (const ch of city.churches) {
+    fill(ch.tombs, 'tomb');
+    out.push(`<path d="${pathD([ch.nave, ch.apse, ch.tower])}" fill="none" stroke="${COLORS.buildingLine}" stroke-width="2.2" stroke-linejoin="round"/>`);
+    fill([ch.nave, ch.apse], 'church');
+    fill([ch.tower], 'church', ` stroke="${COLORS.buildingLine}" stroke-width="1.1"`);
+  }
+  // Auberges
+  fill(city.inns.map(i => i.poly), 'inn', ` stroke="${COLORS.buildingLine}" stroke-width="1"`);
+
   // Courbes de niveau par-dessus la ville, très discrètes
   if (contourD) out.push(`<path d="${contourD}" fill="none" stroke="${COLORS.contour}" stroke-opacity=".22" stroke-width="1.1"/>`);
 
   // Anciennes enceintes : seuls les tronçons encore debout sont dessinés (les démolis sont devenus boulevards)
   const standing = city.oldWalls.filter(w => w.standing);
   if (standing.length) {
-    out.push(`<path d="${standing.map(w => lineD([w.a, w.b])).join('')}" fill="none" stroke="${COLORS.oldWall}" stroke-width="5" stroke-linecap="round"/>`);
+    // Une brèche (rue qui traverse) raccourcit le mur de quelques mètres à cet endroit
+    const cut = (p, q, k) => { const L = Math.hypot(q[0] - p[0], q[1] - p[1]) || 1, t = Math.min(0.45, 5 / L); return [p[0] + (q[0] - p[0]) * t * k, p[1] + (q[1] - p[1]) * t * k]; };
+    out.push(`<path d="${standing.map(w => lineD([w.breachA ? cut(w.a, w.b, 1) : w.a, w.breachB ? cut(w.b, w.a, 1) : w.b])).join('')}" fill="none" stroke="${COLORS.oldWall}" stroke-width="5" stroke-linecap="butt"/>`);
     const placed = [];
-    for (const w of standing) for (const p of [w.a, w.b]) {
-      if (placed.some(t => Math.hypot(p[0] - t[0], p[1] - t[1]) < 30)) continue;
+    for (const w of standing) for (const [p, br] of [[w.a, w.breachA], [w.b, w.breachB]]) {
+      if (br || placed.some(t => Math.hypot(p[0] - t[0], p[1] - t[1]) < 30)) continue;
       out.push(`<circle cx="${n1(p[0])}" cy="${n1(p[1])}" r="5" fill="${COLORS.oldWall}"/>`);
       placed.push(p);
     }
@@ -199,10 +234,71 @@ function renderSVG(city) {
   });
   gateMarks(city.gates, 12, COLORS.wall);
 
-  // Étiquettes
-  for (const d of city.districts) out.push(`<text class="qtr" x="${n1(d.at[0])}" y="${n1(d.at[1])}">${esc(d.name)}</text>`);
-  for (const l of city.labels) out.push(`<text class="${l.italic ? 'qtr' : 'lbl'}" x="${n1(l.at[0])}" y="${n1(l.at[1])}">${esc(l.text)}</text>`);
-  for (const g of city.gateNames) out.push(`<text class="gate" x="${n1(g.at[0])}" y="${n1(g.at[1])}">${esc(g.text)}</text>`);
+  // Portes d'eau : arche au-dessus de la rivière, tours sur chaque berge, herse
+  for (const g of city.waterGates) {
+    const [dx, dy] = g.dir, nx = -dy, ny = dx, h = g.w / 2;
+    const ang = (Math.atan2(dy, dx) * 180) / Math.PI;
+    out.push(`<rect x="-7" y="${n1(-h)}" width="14" height="${n1(g.w)}" fill="${COLORS.water}" transform="translate(${n1(g.at[0])} ${n1(g.at[1])}) rotate(${n1(ang)})"/>`);
+    out.push(`<path d="M${n1(g.at[0] - nx * h)} ${n1(g.at[1] - ny * h)}L${n1(g.at[0] + nx * h)} ${n1(g.at[1] + ny * h)}" stroke="${COLORS.wall}" stroke-width="1.6" stroke-dasharray="2 2"/>`);
+    for (const sgn of [-1, 1]) {
+      out.push(`<rect x="-6" y="-6" width="12" height="12" fill="${COLORS.wall}" transform="translate(${n1(g.at[0] + nx * (h + 5) * sgn)} ${n1(g.at[1] + ny * (h + 5) * sgn)}) rotate(${n1(ang)})"/>`);
+    }
+  }
+
+  // Étiquettes : placement sans chevauchement (les plus importantes d'abord)
+  const boxes = [];
+  const hit = b => boxes.some(o => b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]);
+  const boxOf = (x, y, text, size) => { const w = text.length * size * 0.55, h = size * 1.25; return [x - w / 2, y - h / 2, x + w / 2, y + h / 2]; };
+  const place = (x, y, text, size, mustShow) => {
+    const h = size * 1.3, w = text.length * size * 0.55;
+    for (const [ox, oy] of [[0, 0], [0, -h], [0, h], [w * 0.6, 0], [-w * 0.6, 0], [0, -2 * h], [0, 2 * h], [w * 0.6, -h], [-w * 0.6, h]]) {
+      const b = boxOf(x + ox, y + oy, text, size);
+      if (!hit(b)) { boxes.push(b); return [x + ox, y + oy]; }
+    }
+    if (!mustShow) return null;
+    boxes.push(boxOf(x, y, text, size));
+    return [x, y];
+  };
+  const textAt = (cls, size, l, must) => {
+    const p = place(l.at[0], l.at[1], l.text, size, must);
+    if (p) out.push(`<text class="${cls}" x="${n1(p[0])}" y="${n1(p[1])}">${esc(l.text)}</text>`);
+  };
+  for (const l of city.labels) textAt(l.italic ? 'qtr' : 'lbl', l.italic ? fs * 1.15 : fs, l, true);
+  for (const d of city.districts) textAt('qtr', fs * 1.15, { at: d.at, text: d.name }, true);
+  for (const g of city.gateNames) textAt('gate', fs * 0.8, g, true);
+  for (const ch of city.churches) textAt('small', fs * 0.68, { at: ch.at, text: ch.name }, false);
+  for (const inn of city.inns) textAt('inn', fs * 0.62, { at: [inn.at[0], inn.at[1] - fs * 0.9], text: inn.name }, false);
+
+  // Noms de rues, écrits le long de la rue (dans le sens de la lecture)
+  const stSize = { main: fs * 0.62, rue: fs * 0.5, ruelle: fs * 0.42, road: fs * 0.55 };
+  const stPaths = [], stTexts = [];
+  city.streetLabels.forEach((sl, k) => {
+    let pts = sl.points.length > 2 ? smoothLine(sl.points) : sl.points;
+    if (pts[pts.length - 1][0] < pts[0][0]) pts = pts.slice().reverse();
+    let L = 0;
+    for (let i = 1; i < pts.length; i++) L += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+    const size = stSize[sl.cls] || fs * 0.5, tw = sl.name.length * size * 0.52;
+    if (tw > L * 0.85) return;
+    // Cases occupées par le texte, prises autour du milieu de la rue
+    const samples = [];
+    let acc = 0;
+    for (let i = 1; i < pts.length; i++) {
+      const sl2 = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+      for (let t = 0; t < sl2; t += size) {
+        const pos = acc + t;
+        if (Math.abs(pos - L / 2) <= tw / 2) {
+          const x = pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * (t / sl2), y = pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * (t / sl2);
+          samples.push([x - size * 0.5, y - size * 0.5, x + size * 0.5, y + size * 0.5]);
+        }
+      }
+      acc += sl2;
+    }
+    if (samples.some(hit)) return;
+    samples.forEach(b => boxes.push(b));
+    stPaths.push(`<path id="cmg-st-${k}" d="${lineD(pts)}"/>`);
+    stTexts.push(`<text class="st st-${sl.cls}"><textPath href="#cmg-st-${k}" startOffset="50%" text-anchor="middle">${esc(sl.name)}</textPath></text>`);
+  });
+  if (stPaths.length) out.push(`<defs>${stPaths.join('')}</defs>`, ...stTexts);
 
   // Titre
   const ts = E / 16;
@@ -210,9 +306,9 @@ function renderSVG(city) {
 
   // Légende des toits
   const lx = E - E * 0.3, ly = E - E * 0.17, sw = fs * 0.9;
-  out.push(`<rect x="${n1(lx - sw * 0.6)}" y="${n1(ly - sw * 1.1)}" width="${n1(E * 0.27)}" height="${n1(sw * 5.2)}" rx="4" fill="${COLORS.land}" fill-opacity=".85"/>`);
-  [['tile', 'Tuile (colombages)'], ['slate', 'Ardoise (pierre)'], ['thatch', 'Chaume']].forEach(([k, t], i) => {
-    const y = ly + i * sw * 1.5;
+  out.push(`<rect x="${n1(lx - sw * 0.6)}" y="${n1(ly - sw * 2.6)}" width="${n1(E * 0.27)}" height="${n1(sw * 6.7)}" rx="4" fill="${COLORS.land}" fill-opacity=".85"/>`);
+  [['tile', 'Tuile (colombages)'], ['slate', 'Ardoise (pierre)'], ['thatch', 'Chaume'], ['inn', 'Auberge']].forEach(([k, t], i) => {
+    const y = ly - sw * 1.5 + i * sw * 1.5;
     out.push(`<rect x="${n1(lx)}" y="${n1(y - sw / 2)}" width="${n1(sw)}" height="${n1(sw)}" fill="${COLORS[k]}" stroke="${COLORS.buildingLine}" stroke-width="0.6"/>`);
     out.push(`<text class="leg" x="${n1(lx + sw * 1.5)}" y="${n1(y)}">${t}</text>`);
   });

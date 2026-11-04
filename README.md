@@ -13,13 +13,13 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 - avec plusieurs collines, la plus haute porte l'acropole ; les autres, plus basses, gardent leurs pentes en vignes et portent un petit sanctuaire avec leur nom (Mont des Corbeaux, Butte aux Moulins…), et la ville se glisse dans les vallons ;
 - par où passent les **routes**, qui contournent les pentes.
 
-**La ville a une histoire.** Elle naît autour du marché, sur un terrain plat, près d'un gué s'il y a une rivière, puis s'étend en évitant pentes et cours d'eau. L'**âge de la ville** (1, 2 ou 3 enceintes) décide de combien de fois elle a débordé de ses murs. Les anciennes enceintes restent à l'intérieur, en partie démolies, avec leurs vieilles portes.
+**La ville a une histoire.** Elle naît autour du marché, sur un terrain plat, près d'un gué s'il y a une rivière, puis s'étend en évitant pentes et cours d'eau. L'**âge de la ville** (1, 2 ou 3 enceintes) décide de combien de fois elle a débordé de ses murs. Chaque enceinte suit le tracé le plus court à défendre (elle englobe pentes et collines au lieu de les contourner). Les anciennes enceintes restent à l'intérieur en anneaux, debout ou démolies par longs tronçons ; les parties tombées sont devenues des boulevards, et les rues ont percé des brèches dans le reste. Là où la rivière entre dans la ville, une porte d'eau avec sa herse.
 
 **Le parcellaire est organique.** Chaque quartier est redécoupé en petites cellules. Les îlots sont des assemblages irréguliers de ces cellules, séparés par les grandes routes, puis par des rues secondaires, des ruelles et des impasses tracées en travers des îlots trop grands. Les maisons ne bordent que les rues : les remparts, les berges et les cœurs d'îlots reçoivent des cours, des jardins, des arbres et des clôtures. Dehors, les champs sont en lanières (openfield).
 
 **Les maisons dépendent du quartier.**
 - **Parcelles en lanières** : façade étroite sur rue, maison devant, cour ou jardin derrière, parfois une dépendance au fond.
-- **Vieille ville** : parcelles serrées et profondes, beaucoup de pierre.
+- **Vieille ville** : parcelles serrées et profondes, beaucoup de pierre, arrière-corps sur cour : c'est le quartier le plus peuplé.
 - **Bourg-Neuf** : parcelles plus larges, colombages, jardins.
 - **Faubourgs** : maisons seulement le long des routes, en chaume.
 - **Grandes rues** : les façades y sont plus riches.
@@ -33,7 +33,13 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 - Le cimetière et le monastère sont hors les murs.
 - S'il n'y a pas de place logique, le bâtiment n'est pas placé et l'outil dit pourquoi.
 
+**Chaque quartier a son église paroissiale** (Saint-Brice, Sainte-Foy…) dans son petit cimetière, et des **auberges** nommées attendent les voyageurs près des portes et du marché.
+
 **Les quartiers sont nommés selon ce qu'ils sont.** Vieille Ville, Quartier des Tanneurs (en aval, à cause de l'odeur), Meuniers, Les Quais, Sous-le-Château, Bourg-Neuf, Quartier de la Porte du Nord… Tu peux les renommer.
+
+**Les rues ont un nom, écrit le long de leur tracé** : la Grand-Rue et les rues des portes vers le marché, la Montée du Château, des rues nommées d'après leur quartier, leur église ou le relief (Rue des Tanneurs, Rue Saint-Aubin, Rue Haute, Rue du Quai…), des ruelles et des impasses. Les routes mènent aux villes voisines. Les étiquettes sont placées sans se chevaucher.
+
+**La fiche de ville**, dans le panneau et exportable en Markdown, raconte ce que le plan montre : le site, l'histoire lisible dans les enceintes, les portes et leurs routes, chaque quartier et son atmosphère, les lieux notables, toutes les rues, et quelques accroches pour une scène.
 
 ## Utilisation
 
@@ -51,9 +57,13 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 |---|---|
 | `index.html` | la page |
 | `style.css` | la mise en page |
-| `generator.js` | le modèle : relief, rivières, croissance, enceintes, routes, bâtiments, parcelles (données pures) |
-| `render.js` | le dessin en SVG |
+| `geo.js` | outils : hasard reproductible, géométrie, Voronoi, plus courts chemins |
+| `catalog.js` | tailles, bâtiments, types de maisons, listes de noms |
+| `generator.js` | le modèle : relief, rivières, croissance, enceintes, routes, bâtiments, parcellaire, noms (données pures) |
+| `lore.js` | la fiche de ville |
+| `render.js` | le dessin en SVG, placement des étiquettes |
 | `app.js` | l'interface : réglages, zoom, enregistrement, export |
+| `test.js` | les tests : `node test.js` (ou `node test.js 200` pour plus de villes) |
 
 ## Mise en ligne (GitHub Pages)
 
