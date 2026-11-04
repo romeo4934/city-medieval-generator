@@ -21,8 +21,8 @@ function normalize(o) {
     seed: String(o.seed || randomSeed()),
     size: SIZES[o.size] ? o.size : 'moyenne',
     river: ['auto', 'non', 'oui', 'deux'].includes(o.river) ? o.river : 'auto',
-    hill: ['auto', 'oui', 'non'].includes(o.hill) ? o.hill : 'auto',
-    inner: ['aucun', 'un', 'plusieurs'].includes(o.inner) ? o.inner : 'aucun',
+    relief: ['auto', 'plaine', 'colline', 'vallee'].includes(o.relief) ? o.relief : 'auto',
+    age: ['auto', 'jeune', 'ancienne', 'tresancienne'].includes(o.age) ? o.age : 'auto',
     buildings: Array.isArray(o.buildings) ? o.buildings.filter(id => BUILDINGS.some(b => b.id === id)) : DEFAULT_BUILDINGS.slice(),
     names: Array.isArray(o.names) ? o.names.map(n => String(n || '')) : [],
     cityName: String(o.cityName || ''),
@@ -35,8 +35,8 @@ function readHash() {
     seed: p.get('graine'),
     size: p.get('taille'),
     river: p.get('riviere'),
-    hill: p.get('colline'),
-    inner: p.get('murs'),
+    relief: p.get('relief'),
+    age: p.get('age'),
     buildings: p.has('bat') ? p.get('bat').split(',').filter(Boolean) : undefined,
     names: p.has('noms') ? p.get('noms').split('|') : [],
     cityName: p.get('nom'),
@@ -45,7 +45,7 @@ function readHash() {
 
 function writeHash(o) {
   const p = new URLSearchParams({
-    graine: o.seed, taille: o.size, riviere: o.river, colline: o.hill, murs: o.inner, bat: o.buildings.join(','),
+    graine: o.seed, taille: o.size, riviere: o.river, relief: o.relief, age: o.age, bat: o.buildings.join(','),
   });
   if (o.cityName) p.set('nom', o.cityName);
   if (o.names.some(Boolean)) p.set('noms', o.names.join('|'));
@@ -58,8 +58,8 @@ function fromControls() {
     seed: $('seed').value.trim() || randomSeed(),
     size: $('size').value,
     river: $('river').value,
-    hill: $('hill').value,
-    inner: $('inner').value,
+    relief: $('relief').value,
+    age: $('age').value,
     buildings: [...document.querySelectorAll('#buildings input:checked')].map(i => i.value),
   };
 }
@@ -72,8 +72,8 @@ function build(o) {
   $('seed').value = opts.seed;
   $('size').value = opts.size;
   $('river').value = opts.river;
-  $('hill').value = opts.hill;
-  $('inner').value = opts.inner;
+  $('relief').value = opts.relief;
+  $('age').value = opts.age;
   document.querySelectorAll('#buildings input').forEach(i => { i.checked = opts.buildings.includes(i.value); });
   writeHash(opts);
 
@@ -89,18 +89,18 @@ function build(o) {
     <h2>${escAttr(current.name)}</h2>
     <dl>
       <dt>Population</dt><dd>≈ ${s.population.toLocaleString('fr-FR')} habitants</dd>
-      <dt>Bâtiments</dt><dd>${s.buildings.toLocaleString('fr-FR')}</dd>
+      <dt>Maisons</dt><dd>${s.houses.toLocaleString('fr-FR')} (pierre ${s.stone}, colombages ${s.timber}, chaume ${s.thatch})</dd>
       <dt>Diamètre</dt><dd>≈ ${s.diameter} m</dd>
       <dt>Portes</dt><dd>${current.gateNames.map(g => g.text).join(', ')}</dd>
       <dt>Rivières</dt><dd>${s.rivers || 'aucune'}</dd>
-      <dt>Colline</dt><dd>${s.hill ? 'oui' : 'non'}</dd>
+      <dt>Relief</dt><dd>${{ plaine: 'plaine', colline: 'colline' + (current.citadel ? ', citadelle au sommet' : ''), vallee: 'vallée' }[s.relief]}</dd>
+      <dt>Enceintes</dt><dd>${s.age}${s.age > 1 ? ' (les anciennes sont en partie démolies)' : ''}</dd>
     </dl>
     ${s.missing.length ? `<p class="warn">Non placé : ${s.missing.join(', ')}</p>` : ''}`;
 
   $('districts').innerHTML = current.districts.map((d, k) => `
     <label class="district">
       <input type="text" data-k="${k}" value="${escAttr(opts.names[k] || '')}" placeholder="${escAttr(d.auto)}">
-      ${d.fortified ? '<span title="Quartier fortifié">🛡</span>' : ''}
     </label>`).join('');
 }
 
@@ -257,7 +257,7 @@ $('random').onclick = () => { view = null; build({ ...fromControls(), seed: rand
 $('apply').onclick = () => build(fromControls());
 $('seed').onkeydown = e => { if (e.key === 'Enter') { view = null; build({ ...fromControls(), names: [], cityName: '' }); } };
 $('size').onchange = () => build({ ...fromControls(), names: [] });
-$('river').onchange = $('hill').onchange = $('inner').onchange = () => build(fromControls());
+$('river').onchange = $('relief').onchange = $('age').onchange = () => build(fromControls());
 $('buildings').addEventListener('change', () => build(fromControls()));
 
 window.addEventListener('hashchange', () => build(readHash()));
