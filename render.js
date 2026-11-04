@@ -5,6 +5,13 @@ const COLORS = {
   land: '#e9e5d6',
   field1: '#dde2c2',
   field2: '#e5e3c4',
+  field3: '#d8dcbc',
+  fieldLine: '#c9c8a4',
+  lotLine: '#c7bea8',
+  fence: '#9a8d76',
+  tree: '#b7c294',
+  treeLine: '#8a9666',
+  stall: '#d9b98e',
   meadow: '#dfe0c5',
   vine: '#d3d6b0',
   vineDot: '#8f9a63',
@@ -72,9 +79,10 @@ function renderSVG(city) {
 
   // Sol, champs, prés, vignes
   out.push(`<rect x="${n1(-E)}" y="${n1(-E)}" width="${n1(2 * E)}" height="${n1(2 * E)}" fill="${COLORS.land}"/>`);
-  fill(city.fields[0], 'field1');
-  fill(city.fields[1], 'field2');
+  // Champs en lanières : trois cultures, sillons visibles
+  ['field1', 'field2', 'field3'].forEach((k, i) => fill(city.fieldStrips[i], k, ` stroke="${COLORS.fieldLine}" stroke-width="0.6"`));
   fill(city.meadows, 'meadow');
+  fill(city.suburbGround, 'garden');
   fill(city.vineyards, 'url(#cmg-vines)');
 
   // Courbes de niveau sous la ville
@@ -97,18 +105,15 @@ function renderSVG(city) {
     out.push(`<rect x="${n1(-b.length / 2)}" y="-6" width="${n1(b.length)}" height="12" fill="${COLORS.street}" stroke="${COLORS.buildingLine}" stroke-width="1.5" transform="translate(${n1(b.x)} ${n1(b.y)}) rotate(${n1(b.angle)})"/>`);
   }
 
-  // Limites de quartiers
-  if (city.districtLines.length) {
-    out.push(`<path d="${city.districtLines.map(lineD).join('')}" fill="none" stroke="${COLORS.district}" stroke-width="1.1" stroke-dasharray="5 4" stroke-linecap="round"/>`);
-  }
-
-  // Îlots : cours, jardins, terrasses
-  fill(city.ground.citadel, 'citadel');
+  // Îlots : cours, jardins, terrasses, limites de parcelles
   fill(city.ground.court, 'court');
   fill(city.ground.yard, 'yard');
   fill(city.ground.garden, 'garden');
   fill(city.terraces, 'url(#cmg-vines)');
+  if (city.lotLines.length) out.push(`<path d="${city.lotLines.map(lineD).join('')}" stroke="${COLORS.lotLine}" stroke-width="0.5"/>`);
+  if (city.fences.length) out.push(`<path d="${city.fences.map(lineD).join('')}" stroke="${COLORS.fence}" stroke-width="1"/>`);
   fill(city.annexes, 'annex', ` stroke="${COLORS.buildingLine}" stroke-width="0.4"`);
+  for (const [x, y, r] of city.trees) out.push(`<circle cx="${n1(x)}" cy="${n1(y)}" r="${n1(r)}" fill="${COLORS.tree}" stroke="${COLORS.treeLine}" stroke-width="0.5"/>`);
 
   // Maisons : la couleur du toit dit le matériau (ardoise, tuile, chaume)
   for (const roof of ['tile', 'slate', 'thatch']) {
@@ -120,6 +125,8 @@ function renderSVG(city) {
 
   // Place du marché
   fill(city.plaza, 'plaza', ` stroke="${COLORS.roadEdge}" stroke-width="1"`);
+  fill(city.stalls, 'stall', ` stroke="${COLORS.buildingLine}" stroke-width="0.5"`);
+  for (const [x, y, r] of city.wells) out.push(`<circle cx="${n1(x)}" cy="${n1(y)}" r="${n1(r)}" fill="${COLORS.water}" stroke="${COLORS.buildingLine}" stroke-width="1.2"/>`);
 
   // Bâtiments importants
   for (const s of city.specials) {

@@ -14,6 +14,8 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 
 **La ville a une histoire.** Elle naît autour du marché, sur un terrain plat, près d'un gué s'il y a une rivière, puis s'étend en évitant pentes et cours d'eau. L'**âge de la ville** (1, 2 ou 3 enceintes) décide de combien de fois elle a débordé de ses murs. Les anciennes enceintes restent à l'intérieur, en partie démolies, avec leurs vieilles portes.
 
+**Le parcellaire est organique.** Chaque quartier est redécoupé en petites cellules. Les îlots sont des assemblages irréguliers de ces cellules, séparés par les grandes routes, puis par des rues secondaires, des ruelles et des impasses tracées en travers des îlots trop grands. Les maisons ne bordent que les rues : les remparts, les berges et les cœurs d'îlots reçoivent des cours, des jardins, des arbres et des clôtures. Dehors, les champs sont en lanières (openfield).
+
 **Les maisons dépendent du quartier.**
 - **Parcelles en lanières** : façade étroite sur rue, maison devant, cour ou jardin derrière, parfois une dépendance au fond.
 - **Vieille ville** : parcelles serrées et profondes, beaucoup de pierre.

@@ -794,7 +794,286 @@ function generateCity(opts) {
     d.labelCell = (plain.length ? plain : d.cells).reduce((m, c) => (dist(c.site, mid) < dist(m.site, mid) ? c : m));
   });
 
-  // ================= 12. Géométrie : îlots, parcelles, maisons =================
+  // ================= 13. Parcellaire fin =================
+  // Chaque quartier bâti est redécoupé en petites cellules. Les îlots sont des assemblages
+  // irréguliers de ces cellules, séparés par les grandes routes puis par des rues et ruelles
+  // tracées à travers les îlots trop grands. Les maisons ne bordent que les rues.
+  const between = (r, [a, b]) => a + r() * (b - a);
+  const circle = (c, r, n = 36) => Array.from({ length: n }, (_, i) => [c[0] + Math.cos((i / n) * 2 * Math.PI) * r, c[1] + Math.sin((i / n) * 2 * Math.PI) * r]);
+  const inradius = poly => {
+    const c = Geo.centroid(poly);
+    let r = Infinity;
+    for (let i = 0; i < poly.length; i++) r = Math.min(r, Geo.distToSegment(c, poly[i], poly[(i + 1) % poly.length]));
+    return [c, r];
+  };
+  const rect = (c, ax, len, wid) => {
+    const v = [-ax[1], ax[0]];
+    return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [c[0] + ax[0] * a * len / 2 + v[0] * b * wid / 2, c[1] + ax[1] * a * len / 2 + v[1] * b * wid / 2]);
+  };
+  const inside = (poly, p) => {
+    const s = Math.sign(Geo.area(poly));
+    for (let i = 0; i < poly.length; i++) {
+      const A = poly[i], B = poly[(i + 1) % poly.length];
+      if (((B[0] - A[0]) * (p[1] - A[1]) - (B[1] - A[1]) * (p[0] - A[0])) * s < 0) return false;
+    }
+    return true;
+  };
+  // Distance jusqu'à la sortie d'un polygone convexe en partant de P dans la direction d
+  const rayExit = (poly, P, d) => {
+    let best = Infinity;
+    for (let i = 0; i < poly.length; i++) {
+      const A = poly[i], B = poly[(i + 1) % poly.length];
+      const ex = B[0] - A[0], ey = B[1] - A[1];
+      const den = d[0] * ey - d[1] * ex;
+      if (Math.abs(den) < 1e-9) continue;
+      const t = ((A[0] - P[0]) * ey - (A[1] - P[1]) * ex) / den;
+      const s = ((A[0] - P[0]) * d[1] - (A[1] - P[1]) * d[0]) / den;
+      if (t > 0.05 && s >= -1e-6 && s <= 1 + 1e-6) best = Math.min(best, t);
+    }
+    return best;
+  };
+  // Découpe un polygone convexe en bandes parallèles (champs, entrepôts)
+  const stripCut = (poly, dir, widths, rand) => {
+    const n = [-dir[1], dir[0]];
+    const ts = poly.map(p => p[0] * n[0] + p[1] * n[1]);
+    const out = [];
+    for (let t = Math.min(...ts); t < Math.max(...ts);) {
+      const w = between(rand, widths);
+      let s = Geo.clip(poly, n[0] * t, n[1] * t, n[0], n[1]);
+      s = Geo.clip(s, n[0] * (t + w), n[1] * (t + w), -n[0], -n[1]);
+      if (s.length >= 3 && Math.abs(Geo.area(s)) > 15) out.push(s);
+      t += w;
+    }
+    return out;
+  };
+  const voronoiIn = (pts, poly) => pts.map((s, i) => {
+    let p = poly;
+    for (let j = 0; j < pts.length && p.length >= 3; j++) {
+      if (j === i) continue;
+      const t = pts[j];
+      p = Geo.clip(p, (s[0] + t[0]) / 2, (s[1] + t[1]) / 2, s[0] - t[0], s[1] - t[1]);
+    }
+    return p;
+  });
+
+  const zoneOf = c => {
+    if (c.citadel) return 'citadelle';
+    if (!c.inner) return 'faubourg';
+    if (age === 1) return 'bourg';
+    if (c.ring === 0) return 'vieille';
+    return c.ring === lastRing ? 'neuf' : 'bourg';
+  };
+  const isSuburb = c => !c.inner && !c.citadel && !c.steep && !c.building && c.type !== 'plaza'
+    && touches(c, roadEdges) && dC(c) < 1.5 * R && !touchesBorder(c);
+  const isFine = c => !c.building && c.type !== 'plaza' && !c.steep && (c.inner || c.citadel || isSuburb(c));
+  const domainOf = c => (c.citadel ? 'cit' : c.inner ? 'town' : 'sub');
+  const FINE_AREA = { vieille: 1300, bourg: 1800, neuf: 2400, faubourg: 2400, citadelle: 2000 };
+
+  // --- cellules fines ---
+  const fverts = [], fgrid = new Map();
+  const fweld = p => {
+    const gx = Math.floor(p[0]), gy = Math.floor(p[1]);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
+      const list = fgrid.get((gx + dx) + ',' + (gy + dy));
+      if (list) for (const id of list) {
+        const v = fverts[id];
+        if (Math.abs(v[0] - p[0]) < 0.3 && Math.abs(v[1] - p[1]) < 0.3) return id;
+      }
+    }
+    const id = fverts.length;
+    fverts.push([p[0], p[1]]);
+    const k = gx + ',' + gy;
+    if (!fgrid.has(k)) fgrid.set(k, []);
+    fgrid.get(k).push(id);
+    return id;
+  };
+  const fcells = [];
+  const childrenOf = new Map();
+  for (const c of cells) {
+    if (!isFine(c)) continue;
+    const poly = c.ids.map(id => verts[id]);
+    if (poly.length < 3) continue;
+    const zone = zoneOf(c);
+    const k = Math.max(1, Math.round(Math.abs(Geo.area(poly)) / FINE_AREA[zone]));
+    const r = rng('fin|' + opts.size + '|' + c.index);
+    const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]);
+    let pts = [];
+    for (let tries = 0; pts.length < k && tries < k * 60; tries++) {
+      const p = [between(r, [Math.min(...xs), Math.max(...xs)]), between(r, [Math.min(...ys), Math.max(...ys)])];
+      if (inside(poly, p)) pts.push(p);
+    }
+    if (!pts.length) pts = [Geo.centroid(poly)];
+    for (let it = 0; it < 2 && pts.length > 1; it++) pts = voronoiIn(pts, poly).map((pc, i) => (pc.length >= 3 ? Geo.centroid(pc) : pts[i]));
+    const kids = [];
+    for (const pc of pts.length > 1 ? voronoiIn(pts, poly) : [poly]) {
+      if (pc.length < 3) continue;
+      const ids = [];
+      for (const p of pc) { const id = fweld(p); if (ids[ids.length - 1] !== id) ids.push(id); }
+      if (ids.length > 1 && ids[0] === ids[ids.length - 1]) ids.pop();
+      if (ids.length < 3) continue;
+      kids.push(fcells.length);
+      fcells.push({ index: fcells.length, ids, coarse: c, zone, suburb: !c.inner && !c.citadel });
+    }
+    childrenOf.set(c.index, kids);
+  }
+
+  // --- raccords le long des bords de quartier (sommets en T) ---
+  const fek = (a, b) => (a < b ? a + '_' + b : b + '_' + a);
+  const coarseLists = new Map();
+  const coarseList = key => {
+    if (coarseLists.has(key)) return coarseLists.get(key);
+    const [u, v] = unkey(key), U = verts[u], V = verts[v], L = dist(U, V);
+    const cand = new Set();
+    for (const ci of edgeCells.get(key) || []) for (const fi of childrenOf.get(ci) || []) fcells[fi].ids.forEach(id => cand.add(id));
+    const list = [...cand].filter(id => Geo.distToSegment(fverts[id], U, V) < 0.4)
+      .map(id => [id, ((fverts[id][0] - U[0]) * (V[0] - U[0]) + (fverts[id][1] - U[1]) * (V[1] - U[1])) / L])
+      .sort((a, b) => a[1] - b[1]).map(x => x[0]);
+    coarseLists.set(key, list);
+    return list;
+  };
+  const fineOnCoarse = new Map();   // bord fin → bord de quartier sur lequel il se trouve
+  for (const fc of fcells) {
+    const lists = cellEdges(fc.coarse).map(([a, b]) => [ek(a, b), coarseList(ek(a, b))]);
+    const out = [];
+    const ids = fc.ids;
+    for (let k = 0; k < ids.length; k++) {
+      const p = ids[k], q = ids[(k + 1) % ids.length];
+      out.push(p);
+      for (const [ck, L] of lists) {
+        const ip = L.indexOf(p), iq = L.indexOf(q);
+        if (ip < 0 || iq < 0) continue;
+        const seq = ip < iq ? L.slice(ip, iq + 1) : L.slice(iq, ip + 1).reverse();
+        for (let m = 1; m + 1 < seq.length; m++) out.push(seq[m]);
+        for (let m = 0; m + 1 < seq.length; m++) fineOnCoarse.set(fek(seq[m], seq[m + 1]), ck);
+        break;
+      }
+    }
+    fc.ids = out;
+  }
+  const fEdges = fc => fc.ids.map((a, k) => [a, fc.ids[(k + 1) % fc.ids.length]]);
+  const fEdgeCells = new Map();
+  fcells.forEach(fc => fEdges(fc).forEach(([a, b]) => {
+    const key = fek(a, b);
+    if (!fEdgeCells.has(key)) fEdgeCells.set(key, []);
+    fEdgeCells.get(key).push(fc.index);
+  }));
+
+  // --- nature de chaque bord : grande route, rue, ruelle, place, rempart, berge… ---
+  const oldWallStanding = new Map(oldWalls.map(w => [ek(w.a, w.b), w.standing]));
+  const coarseClass = (ck, from) => {
+    if (wallEdges.has(ck)) return 'wall';
+    if (riverEdgeW.has(ck)) return 'river';
+    if (citadelEdges.has(ck)) return 'wall2';
+    if (roadEdges.has(ck)) return 'main';
+    if (oldWallStanding.has(ck)) return oldWallStanding.get(ck) ? 'oldwall' : 'rue'; // mur démoli → boulevard
+    const other = (edgeCells.get(ck) || []).map(ci => cells[ci]).find(o => o !== from);
+    if (!other) return 'edge';
+    if (other.type === 'plaza' || other.building) return 'place';
+    if (isFine(other)) return domainOf(other) === domainOf(from) ? 'none' : 'edge';
+    if (other.steep) return 'back';
+    return 'edge';
+  };
+  const fclass = new Map();
+  for (const [key, cs] of fEdgeCells) {
+    const ck = fineOnCoarse.get(key);
+    fclass.set(key, ck ? coarseClass(ck, fcells[cs[0]].coarse) : 'none');
+  }
+
+  // --- rues secondaires, ruelles et impasses ---
+  const fArea = fcells.map(fc => Math.abs(Geo.area(fc.ids.map(id => fverts[id]))));
+  const MAX_BLOCK = { vieille: 5500, bourg: 8000, neuf: 12000, citadelle: 9000 };
+  const blocksNow = () => {
+    const parent = fcells.map((_, i) => i);
+    const find = i => (parent[i] === i ? i : (parent[i] = find(parent[i])));
+    for (const [key, cs] of fEdgeCells) if (cs.length === 2 && fclass.get(key) === 'none') parent[find(cs[0])] = find(cs[1]);
+    const groups = new Map();
+    fcells.forEach((fc, i) => { const r = find(i); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(i); });
+    return [...groups.values()];
+  };
+  const localPath = (adj, s, t) => {
+    const d = new Map([[s, 0]]), prev = new Map(), done = new Set();
+    for (;;) {
+      let u = -1, bu = Infinity;
+      for (const [v, dv] of d) if (!done.has(v) && dv < bu) { bu = dv; u = v; }
+      if (u < 0 || u === t) break;
+      done.add(u);
+      for (const e of adj.get(u) || []) if (bu + e.cost < (d.has(e.to) ? d.get(e.to) : Infinity)) { d.set(e.to, bu + e.cost); prev.set(e.to, u); }
+    }
+    if (!d.has(t)) return null;
+    const path = [t];
+    while (path[path.length - 1] !== s) path.push(prev.get(path[path.length - 1]));
+    return path;
+  };
+  const rStreets = rng('rues|' + opts.size);
+  const cutBlock = (group, cls, deadEnd) => {
+    const set = new Set(group);
+    const internal = [], border = new Set();
+    for (const fi of group) for (const [a, b] of fEdges(fcells[fi])) {
+      const key = fek(a, b), cs = fEdgeCells.get(key);
+      if (fclass.get(key) === 'none' && cs.length === 2 && set.has(cs[0]) && set.has(cs[1])) internal.push([a, b]);
+      else { border.add(a); border.add(b); }
+    }
+    if (!internal.length) return false;
+    // Axe principal de l'îlot ; la nouvelle rue le coupe en travers
+    let W = 0, cx = 0, cy = 0;
+    const cents = group.map(fi => [Geo.centroid(fcells[fi].ids.map(id => fverts[id])), fArea[fi]]);
+    cents.forEach(([p, w]) => { W += w; cx += p[0] * w; cy += p[1] * w; });
+    cx /= W; cy /= W;
+    let sxx = 0, syy = 0, sxy = 0;
+    cents.forEach(([p, w]) => { sxx += w * (p[0] - cx) ** 2; syy += w * (p[1] - cy) ** 2; sxy += w * (p[0] - cx) * (p[1] - cy); });
+    const th = 0.5 * Math.atan2(2 * sxy, sxx - syy) + (rStreets() - 0.5) * 0.5;
+    const ax = [Math.cos(th), Math.sin(th)], cut = [-ax[1], ax[0]];
+    const offLine = m => Math.abs((m[0] - cx) * ax[0] + (m[1] - cy) * ax[1]);
+    const adj = new Map();
+    const add = (a, b, c) => { if (!adj.has(a)) adj.set(a, []); adj.get(a).push({ to: b, cost: c }); };
+    for (const [a, b] of internal) {
+      const m = [(fverts[a][0] + fverts[b][0]) / 2, (fverts[a][1] + fverts[b][1]) / 2];
+      const c = dist(fverts[a], fverts[b]) * (1 + (deadEnd ? 0 : offLine(m) / 6));
+      add(a, b, c); add(b, a, c);
+    }
+    const entry = [...border].filter(id => adj.has(id));
+    if (!entry.length) return false;
+    let s, t;
+    if (deadEnd) {
+      const inner = [...adj.keys()].filter(id => !border.has(id));
+      if (!inner.length) return false;
+      t = inner.reduce((m, id) => (dist(fverts[id], [cx, cy]) < dist(fverts[m], [cx, cy]) ? id : m));
+      s = entry.reduce((m, id) => (dist(fverts[id], fverts[t]) < dist(fverts[m], fverts[t]) ? id : m));
+    } else {
+      if (entry.length < 2) return false;
+      const P1 = [cx + cut[0] * 1e4, cy + cut[1] * 1e4], P2 = [cx - cut[0] * 1e4, cy - cut[1] * 1e4];
+      s = entry.reduce((m, id) => (dist(fverts[id], P1) < dist(fverts[m], P1) ? id : m));
+      t = entry.filter(id => id !== s).reduce((m, id) => (dist(fverts[id], P2) < dist(fverts[m], P2) ? id : m));
+    }
+    const path = localPath(adj, s, t);
+    if (!path || path.length < 2) return false;
+    for (let k = 0; k + 1 < path.length; k++) fclass.set(fek(path[k], path[k + 1]), cls);
+    return true;
+  };
+  {
+    const stuck = new Set();
+    for (let guard = 0; guard < 500; guard++) {
+      let target = null, bestArea = 0;
+      for (const g of blocksNow()) {
+        const zone = fcells[g[0]].zone;
+        if (!MAX_BLOCK[zone] || stuck.has(Math.min(...g))) continue;
+        const a = g.reduce((s, i) => s + fArea[i], 0);
+        if (a > MAX_BLOCK[zone] && a > bestArea) { bestArea = a; target = g; }
+      }
+      if (!target) break;
+      if (!cutBlock(target, 'rue')) stuck.add(Math.min(...target));
+    }
+    // Ruelles et impasses dans les îlots encore grands
+    for (const g of blocksNow()) {
+      const zone = fcells[g[0]].zone;
+      if (!MAX_BLOCK[zone]) continue;
+      const a = g.reduce((s, i) => s + fArea[i], 0);
+      if (a > MAX_BLOCK[zone] * 0.5 && rStreets() < 0.45) cutBlock(g, 'ruelle', false);
+      else if (a > MAX_BLOCK[zone] * 0.35 && rStreets() < 0.35) cutBlock(g, 'ruelle', true);
+    }
+  }
+
+  // ================= 14. Dessin des parcelles et des maisons =================
   const city = {
     name, autoName, seed: opts.seed, size: opts.size, R, E, relief, age,
     rivers: rivers.map(rv => ({ w: rv.w, points: smooth(rv.path.map(id => verts[id]), 3) })),
@@ -811,13 +1090,13 @@ function generateCity(opts) {
       gate: citadelGate >= 0 ? verts[citadelGate] : null,
     } : null,
     roads: roads.map(p => p.map(id => verts[id])),
-    ground: { court: [], yard: [], garden: [], citadel: [] },
+    suburbGround: [],
+    ground: { court: [], yard: [], garden: [] },
     houses: { stone: [], timber: [], thatch: [] },
     roofs: { slate: [], tile: [], thatch: [] },
-    ridges: [], annexes: [],
-    terraces: [], vineyards: [], fields: [[], []], meadows: [],
-    plaza: [], specials: [], labels: [],
-    districtLines: [],
+    ridges: [], annexes: [], lotLines: [], fences: [], trees: [],
+    terraces: [], vineyards: [], fieldStrips: [[], [], []], meadows: [],
+    plaza: [], stalls: [], wells: [], specials: [], labels: [],
     contours: [],
     gateNames: [],
     districts: districts.map(d => ({
@@ -825,16 +1104,6 @@ function generateCity(opts) {
       at: Geo.centroid(d.labelCell.ids.map(id => verts[id])),
     })),
   };
-
-  // Limites de quartiers (dans une même enceinte)
-  for (const [key, cs] of edgeCells) {
-    if (cs.length !== 2 || oldWallEdges.has(key) || wallEdges.has(key)) continue;
-    const [p, q] = cs.map(ci => cells[ci]);
-    if (p.inner && q.inner && !p.citadel && !q.citadel && p.district !== q.district) {
-      const [a, b] = unkey(key);
-      city.districtLines.push([verts[a], verts[b]]);
-    }
-  }
 
   // Noms des portes
   {
@@ -871,8 +1140,6 @@ function generateCity(opts) {
     }
   }
 
-  // ---- parcelles en lanières : façade sur rue, cour ou jardin derrière ----
-  const between = (r, [a, b]) => a + r() * (b - a);
   const ridgeOf = (poly, u) => {
     const c = Geo.centroid(poly);
     const v = [-u[1], u[0]];
@@ -885,9 +1152,7 @@ function generateCity(opts) {
     if (hi - lo - 2 * half < 1) return null;
     return [[c[0] + u[0] * (lo + half), c[1] + u[1] * (lo + half)], [c[0] + u[0] * (hi - half), c[1] + u[1] * (hi - half)]];
   };
-
   const addHouse = (poly, zone, rand, rich) => {
-    if (poly.length < 3 || Math.abs(Geo.area(poly)) < 12) return;
     let [pStone, pTimber] = ZONES[zone].mat;
     if (rich) { pStone = Math.min(1, pStone + 0.35); pTimber = 1 - pStone; }
     const r = rand();
@@ -895,92 +1160,167 @@ function generateCity(opts) {
     const roof = mat === 'stone' ? (rand() < 0.55 ? 'slate' : 'tile') : mat === 'timber' ? (rand() < 0.85 ? 'tile' : 'slate') : 'thatch';
     city.houses[mat].push(poly);
     city.roofs[roof].push(poly);
-    return mat;
+  };
+  const treeIn = (poly, rand, p) => {
+    if (rand() >= p || Math.abs(Geo.area(poly)) < 50) return;
+    const [c, ir] = inradius(poly);
+    if (ir < 3) return;
+    const a = rand() * Math.PI * 2, d = rand() * Math.max(0, ir - 4);
+    city.trees.push([c[0] + Math.cos(a) * d, c[1] + Math.sin(a) * d, Math.min(ir * 0.9, between(rand, [2.5, 4.5]))]);
   };
 
-  // Découpe un îlot convexe en lanières perpendiculaires à chaque rue
-  const plots = (block, zone, rand, opts2 = {}) => {
+  const INSET = { main: 5, rue: 2.6, ruelle: 1.5, place: 2.5, wall: 7, wall2: 5, oldwall: 3, edge: 2.5, back: 1.5, none: 0 };
+  const FRONTS = new Set(['main', 'rue', 'ruelle', 'place']);
+  const TREES = { vieille: 0.05, bourg: 0.25, neuf: 0.45, faubourg: 0.5, citadelle: 0.15 };
+  const interiorGround = zone => (zone === 'vieille' || zone === 'citadelle' ? 'court' : 'garden');
+
+  // Intersection de deux polygones convexes, et test de chevauchement (axes séparateurs)
+  const intersectConvex = (poly, clipPoly) => {
+    const sg = Geo.area(clipPoly) > 0 ? 1 : -1;
+    let out = poly;
+    for (let i = 0; i < clipPoly.length && out.length >= 3; i++) {
+      const A = clipPoly[i], B = clipPoly[(i + 1) % clipPoly.length];
+      out = Geo.clip(out, A[0], A[1], -(B[1] - A[1]) * sg, (B[0] - A[0]) * sg);
+    }
+    return out.filter((p, i) => dist(p, out[(i + 1) % out.length]) > 0.05);   // sans sommets en double
+  };
+  const overlaps = (a, b) => {
+    for (const P of [a, b]) for (let i = 0; i < P.length; i++) {
+      const A = P[i], B = P[(i + 1) % P.length], nx = -(B[1] - A[1]), ny = B[0] - A[0];
+      if (Math.hypot(nx, ny) < 1e-6) continue;   // côté de longueur nulle : pas un axe
+      let amin = Infinity, amax = -Infinity, bmin = Infinity, bmax = -Infinity;
+      for (const q of a) { const v = q[0] * nx + q[1] * ny; amin = Math.min(amin, v); amax = Math.max(amax, v); }
+      for (const q of b) { const v = q[0] * nx + q[1] * ny; bmin = Math.min(bmin, v); bmax = Math.max(bmax, v); }
+      const tol = 0.3 * Math.hypot(nx, ny);
+      if (amax <= bmin + tol || bmax <= amin + tol) return false;
+    }
+    return true;
+  };
+
+  // Façades sur rue : maisons rectangulaires alignées sur la rue, cour ou jardin derrière
+  const frontage = (block0, classes0, zone, rand, suburb) => {
     const Z = ZONES[zone];
-    const c = Geo.centroid(block);
+    // Fusionne les segments alignés d'une même rue : une rangée de maisons continue
+    let block = block0.slice(), classes = classes0.slice();
+    for (let changed = true; changed && block.length > 3;) {
+      changed = false;
+      for (let k = 0; k < block.length && block.length > 3; k++) {
+        const pk = (k - 1 + block.length) % block.length, nk = (k + 1) % block.length;
+        if (classes[pk] !== classes[k]) continue;
+        const a1 = Math.atan2(block[k][1] - block[pk][1], block[k][0] - block[pk][0]);
+        const a2 = Math.atan2(block[nk][1] - block[k][1], block[nk][0] - block[k][0]);
+        let da = Math.abs(a1 - a2); if (da > Math.PI) da = 2 * Math.PI - da;
+        if (da < 0.2 || dist(block[k], block[pk]) < 1.5) {
+          block.splice(k, 1); classes.splice(k, 1); changed = true; break;
+        }
+      }
+    }
     const s = Geo.area(block) > 0 ? 1 : -1;
+    const placed = [];
+    city.ground[suburb ? 'garden' : interiorGround(zone)].push(block);
     let count = 0;
     for (let i = 0; i < block.length; i++) {
       const A = block[i], B = block[(i + 1) % block.length];
       const L = dist(A, B);
-      if (L < 4 || (opts2.onlyEdge && !opts2.onlyEdge(i))) continue;
+      const cls = classes[i];
+      if (!FRONTS.has(cls) || (suburb && cls !== 'main') || L < 4) continue;
       const u = [(B[0] - A[0]) / L, (B[1] - A[1]) / L], n = [-u[1] * s, u[0] * s];
-      const sector = [A, B, c];
-      const rich = opts2.richEdge && opts2.richEdge(i);
-      const front = rich ? [Z.front[0], Z.front[0] + 2] : Z.front;
+      const rich = cls === 'main' || cls === 'place';
+      const alley = cls === 'ruelle';
+      const front = rich ? [Z.front[0], Z.front[0] + 2.5] : alley ? [Z.front[0] + 2, Z.front[1] + 3] : Z.front;
+      const skip = alley ? 0.45 : suburb ? 0.35 : zone === 'neuf' ? 0.08 : 0.03;
+      const rowDepth = between(rand, Z.depth) * (rich ? 1.2 : alley ? 0.8 : 1);   // profondeur commune à la rangée
       let t = 0;
-      while (t < L - 0.5) {
+      while (t < L - 1) {
         let w = between(rand, front);
         if (L - (t + w) < front[0] * 0.7) w = L - t;
         const P0 = [A[0] + u[0] * t, A[1] + u[1] * t], P1 = [A[0] + u[0] * (t + w), A[1] + u[1] * (t + w)];
-        const first = t === 0;
+        const mid = [A[0] + u[0] * (t + w / 2), A[1] + u[1] * (t + w / 2)];
         t += w;
-        const lastStrip = t >= L - 0.5;
-        // La 1re et la dernière lanière prennent tout le coin de l'îlot (pas de vide)
-        let strip = first ? sector : Geo.clip(sector, P0[0], P0[1], u[0], u[1]);
-        if (!lastStrip) strip = Geo.clip(strip, P1[0], P1[1], -u[0], -u[1]);
-        if (strip.length < 3) continue;
-        if (opts2.skip && rand() < opts2.skip) { city.ground[Z.court].push(strip); continue; }
-        const d = between(rand, Z.depth) * (rich ? 1.2 : 1);
-        const D = [A[0] + n[0] * d, A[1] + n[1] * d];
-        const house = Geo.clip(strip, D[0], D[1], -n[0], -n[1]);
-        const back = Geo.clip(strip, D[0], D[1], n[0], n[1]);
-        if (back.length >= 3) {
-          city.ground[Z.court].push(back);
-          // Dépendance (atelier, écurie, appentis) au fond de la cour, alignée sur la parcelle
-          if (rand() < Z.annex) {
-            const ad = between(rand, [3, 6]), gap = between(rand, [1.5, 5]);
-            const mid = (t - w / 2);
-            const cc = [A[0] + u[0] * mid + n[0] * (d + gap + ad / 2), A[1] + u[1] * mid + n[1] * (d + gap + ad / 2)];
-            const shed = rect(cc, u, w * between(rand, [0.4, 0.8]), ad);
-            if (shed.every(q => inside(strip, q))) city.annexes.push(shed);
-          }
+        const reach = rayExit(block, [mid[0] + n[0] * 0.1, mid[1] + n[1] * 0.1], n);
+        if (!isFinite(reach) || reach < 5) continue;
+        if (rand() < skip) {
+          city.fences.push([P0, P1]);          // mur de jardin sur la rue
+          continue;
         }
-        if (house.length >= 3) {
-          addHouse(house, zone, rand, rich);
-          count++;
-          // Faîtage : perpendiculaire à la rue si la maison est étroite (pignon sur rue), sinon parallèle
-          const ridge = ridgeOf(house, w < d ? n : u);
-          if (ridge) city.ridges.push(ridge);
+        let d = Math.min(rowDepth * between(rand, [0.85, 1.15]), reach * 0.5);
+        // Maison d'angle : si elle gêne, on la raccourcit côté coin, puis en profondeur
+        let house = null;
+        const trims = [[0, 0], [0, 0.35], [0.35, 0], [0, 0.6], [0.6, 0]];
+        for (const df of [1, 0.65]) for (const [ta, tb] of trims) {
+          if (house) break;
+          const tryD = d * df;
+          if (tryD < 4) continue;
+          const Q0 = [P0[0] + u[0] * w * ta, P0[1] + u[1] * w * ta], Q1 = [P1[0] - u[0] * w * tb, P1[1] - u[1] * w * tb];
+          const r0 = intersectConvex([Q0, Q1, [Q1[0] + n[0] * tryD, Q1[1] + n[1] * tryD], [Q0[0] + n[0] * tryD, Q0[1] + n[1] * tryD]], block);
+          if (r0.length >= 3 && Math.abs(Geo.area(r0)) > 12 && !placed.some(p => overlaps(p, r0))) { house = r0; d = tryD; }
+        }
+        if (!house) continue;
+        placed.push(house);
+        addHouse(house, zone, rand, rich);
+        count++;
+        const ridge = ridgeOf(house, w < d ? n : u);   // pignon sur rue si la façade est étroite
+        if (ridge) city.ridges.push(ridge);
+        // Limite de parcelle derrière la maison
+        if (t < L - 1) {
+          const len = Math.min(reach * 0.75, d + between(rand, [8, 18]));
+          city.lotLines.push([[P1[0] + n[0] * d, P1[1] + n[1] * d], [P1[0] + n[0] * len, P1[1] + n[1] * len]]);
+        }
+        // Dépendance au fond de la cour
+        if (rand() < Z.annex) {
+          const ad = between(rand, [3, 5.5]), gap = between(rand, [1.5, 4]);
+          const cc = [mid[0] + n[0] * (d + gap + ad / 2), mid[1] + n[1] * (d + gap + ad / 2)];
+          const shed = rect(cc, u, w * between(rand, [0.4, 0.75]), ad);
+          if (shed.every(q => inside(block, q)) && !placed.some(p => overlaps(p, shed))) { city.annexes.push(shed); placed.push(shed); }
         }
       }
+    }
+    // Arbres dans les cœurs d'îlots
+    const [c, ir] = inradius(block);
+    const nTrees = Math.round(TREES[zone] * Math.abs(Geo.area(block)) / 250);
+    for (let k = 0; k < nTrees * 3 && k < 40; k++) {
+      if (city.trees.length && k >= nTrees * 3) break;
+      const a = rand() * Math.PI * 2, dd = rand() * ir;
+      const p = [c[0] + Math.cos(a) * dd, c[1] + Math.sin(a) * dd], r = between(rand, [2.5, 4.5]);
+      const blob = rect(p, [1, 0], r * 2, r * 2);
+      if (inside(block, p) && !placed.some(q => overlaps(q, blob))) { city.trees.push([p[0], p[1], r]); placed.push(blob); }
     }
     return count;
   };
 
-  const zoneOf = c => {
-    if (c.citadel) return 'citadelle';
-    if (!c.inner) return 'faubourg';
-    if (age === 1) return 'bourg';
-    if (c.ring === 0) return 'vieille';
-    return c.ring === lastRing ? 'neuf' : 'bourg';
+  // Correspondance bord rétréci → bord d'origine (pour connaître la nature de la rue)
+  const classesAfterInset = (poly, dists, classes, block) => {
+    const s = Geo.area(poly) > 0 ? 1 : -1;
+    return block.map((P, j) => {
+      const Q = block[(j + 1) % block.length], M = [(P[0] + Q[0]) / 2, (P[1] + Q[1]) / 2];
+      for (let i = 0; i < poly.length; i++) {
+        const A = poly[i], B = poly[(i + 1) % poly.length], L = dist(A, B);
+        if (L < 1e-6) continue;
+        const u = [(B[0] - A[0]) / L, (B[1] - A[1]) / L], n = [-u[1] * s, u[0] * s];
+        const sd = (M[0] - A[0]) * n[0] + (M[1] - A[1]) * n[1], tt = (M[0] - A[0]) * u[0] + (M[1] - A[1]) * u[1];
+        if (Math.abs(sd - dists[i]) < 0.35 && tt > -1 && tt < L + 1) return classes[i];
+      }
+      return 'none';
+    });
   };
+
+  let people = 0;
+  for (const fc of fcells) {
+    const poly = fc.ids.map(id => fverts[id]);
+    const keys = fEdges(fc).map(([a, b]) => fek(a, b));
+    const classes = keys.map(k => fclass.get(k));
+    const dists = keys.map((k, i) => (classes[i] === 'river' ? riverEdgeW.get(fineOnCoarse.get(k)) / 2 + 2.5 : INSET[classes[i]]));
+    const block = Geo.inset(poly, dists);
+    if (block.length < 3) continue;
+    const rand = rng('parcelle|' + opts.size + '|' + fc.coarse.index + '|' + fc.index);
+    if (fc.suburb) city.suburbGround.push(block);
+    people += frontage(block, classesAfterInset(poly, dists, classes, block), fc.zone, rand, fc.suburb) * ZONES[fc.zone].people;
+  }
+
+  // Quartiers non redécoupés : place, monuments, pentes, champs
   const withRiver = (k, d) => (riverEdgeW.has(k) ? Math.max(d, riverEdgeW.get(k) / 2 + 2.5) : d);
   const edgeInset = k => withRiver(k,
-    wallEdges.has(k) ? 7 : citadelEdges.has(k) ? 6 : oldWallEdges.has(k) ? 5 : roadEdges.has(k) ? 6 : 2.5);
-  const circle = (c, r, n = 36) => Array.from({ length: n }, (_, i) => [c[0] + Math.cos((i / n) * 2 * Math.PI) * r, c[1] + Math.sin((i / n) * 2 * Math.PI) * r]);
-  const inradius = poly => {
-    const c = Geo.centroid(poly);
-    let r = Infinity;
-    for (let i = 0; i < poly.length; i++) r = Math.min(r, Geo.distToSegment(c, poly[i], poly[(i + 1) % poly.length]));
-    return [c, r];
-  };
-  const rect = (c, ax, len, wid) => {
-    const v = [-ax[1], ax[0]];
-    return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [c[0] + ax[0] * a * len / 2 + v[0] * b * wid / 2, c[1] + ax[1] * a * len / 2 + v[1] * b * wid / 2]);
-  };
-  const inside = (poly, p) => {
-    const s = Math.sign(Geo.area(poly));
-    for (let i = 0; i < poly.length; i++) {
-      const A = poly[i], B = poly[(i + 1) % poly.length];
-      if (((B[0] - A[0]) * (p[1] - A[1]) - (B[1] - A[1]) * (p[0] - A[0])) * s < 0) return false;
-    }
-    return true;
-  };
+    wallEdges.has(k) ? 7 : citadelEdges.has(k) ? 6 : oldWallEdges.has(k) ? 4 : roadEdges.has(k) ? 5.5 : 3.5);
 
   const special = (b, yard, rand, c) => {
     const S = { id: b.id, yard: [yard], yardColor: 'court', shapes: [] };
@@ -989,7 +1329,7 @@ function generateCity(opts) {
     const fill = color => ({ fill: color, stroke: 1.1 });
     switch (b.id) {
       case 'temple': {
-        // Croix latine orientée vers l'est (chœur à l'est, comme les églises médiévales)
+        // Croix latine orientée vers l'est (chœur à l'est), parvis à l'ouest
         const r = ir * 0.95, e = [1, 0];
         S.shapes.push({ polys: [rect([ctr[0] - r * 0.1, ctr[1]], e, r * 1.6, r * 0.42), rect([ctr[0] + r * 0.25, ctr[1]], [0, 1], r * 1.15, r * 0.34)], ...fill('temple'), outline: true });
         S.shapes.push({ polys: [circle([ctr[0] + r * 0.7, ctr[1]], r * 0.21, 20)], ...fill('temple'), outline: true });
@@ -1001,7 +1341,6 @@ function generateCity(opts) {
         S.yardColor = 'castleYard';
         const w = Geo.inset(yard, 6);
         if (!c.citadel && w.length) S.shapes.push({ polys: [w], fill: 'none', stroke: 3.5, strokeColor: 'wall' });
-        // Donjon carré + tours d'angle
         const k = rect(ctr, [1, 0], ir * 0.7, ir * 0.7);
         S.shapes.push({ polys: [k], fill: 'castle', stroke: 1.5, strokeColor: 'wall' });
         S.shapes.push({ polys: k.map(p => circle(p, ir * 0.12, 14)), fill: 'castle', stroke: 1.2, strokeColor: 'wall' });
@@ -1013,10 +1352,13 @@ function generateCity(opts) {
       case 'hospice':
       case 'caserne':
       case 'monastere': {
-        // Bâtiments à cour carrée
         const color = { palais: 'noble', universite: 'school', hospice: 'temple', caserne: 'military', monastere: 'temple' }[b.id];
         S.shapes.push({ polys: [Geo.scale(yard, 0.72), Geo.scale(yard, 0.42)], fill: color, stroke: 1.1, evenodd: true });
         if (b.id === 'monastere') S.shapes.push({ polys: [rect([ctr[0], ctr[1] - ir * 0.95], [1, 0], ir * 0.9, ir * 0.28)], fill: 'temple', stroke: 1.1 });
+        if (b.id === 'monastere' || b.id === 'hospice') {
+          const g = Geo.scale(yard, 0.36);
+          S.shapes.push({ polys: [g], fill: 'green' });
+        }
         break;
       }
       case 'guildes':
@@ -1042,11 +1384,17 @@ function generateCity(opts) {
         }
         S.shapes.push({ polys: tombs, fill: 'tomb' });
         S.shapes.push({ polys: [rect(ctr, [1, 0], ir * 0.35, ir * 0.22)], fill: 'temple', stroke: 1 });
+        S.shapes.push({ polys: [yard], fill: 'none', stroke: 1, strokeColor: 'fence' });
         break;
       }
       case 'port': {
+        // Quai et entrepôts parallèles à la rive
         S.yardColor = 'quay';
-        plots(Geo.inset(yard, 1), 'bourg', rand, { skip: 0.2 });
+        const rk = cellEdges(c).map(([a, b]) => ek(a, b)).find(k => riverEdgeW.has(k));
+        let dir = [1, 0];
+        if (rk) { const [a, b] = unkey(rk); const L = dist(verts[a], verts[b]); dir = [(verts[b][0] - verts[a][0]) / L, (verts[b][1] - verts[a][1]) / L]; }
+        const ware = stripCut(Geo.inset(yard, 8), [-dir[1], dir[0]], [9, 14], rand).filter((_, i) => i % 2 === 0);
+        S.shapes.push({ polys: ware.map(p => Geo.inset(p, 1)).filter(p => p.length >= 3), fill: 'tile', stroke: 0.8 });
         break;
       }
       case 'moulin': {
@@ -1061,52 +1409,47 @@ function generateCity(opts) {
     city.labels.push(label);
   };
 
-  const mainRoadEdgesOf = (c, block) => {
-    // Côtés de l'îlot qui donnent sur une route principale (façades plus riches)
-    const keys = cellEdges(c).map(([a, b]) => ek(a, b));
-    return i => {
-      const p = block[i], q = block[(i + 1) % block.length], m = [(p[0] + q[0]) / 2, (p[1] + q[1]) / 2];
-      return keys.some(k => roadEdges.has(k) && (() => { const [a, b] = unkey(k); return Geo.distToSegment(m, verts[a], verts[b]) < 9; })());
-    };
-  };
-
-  let people = 0;
   for (const c of cells) {
+    if (isFine(c)) continue;
     const poly = c.ids.map(id => verts[id]);
     if (poly.length < 3) continue;
     const keys = cellEdges(c).map(([a, b]) => ek(a, b));
     const rand = rng('ilot|' + opts.size + '|' + c.index);
     const block = Geo.inset(poly, keys.map(edgeInset));
     if (block.length < 3) continue;
-    const zone = zoneOf(c);
 
     if (c.type === 'plaza') {
       city.plaza.push(block);
-      city.labels.push({ at: Geo.centroid(block), text: 'Marché' });
+      // Puits et étals du marché
+      const [ctr, ir] = inradius(block);
+      city.wells.push([ctr[0], ctr[1], 2.6]);
+      const ax = [Math.cos(rand() * Math.PI), 0]; ax[1] = Math.sqrt(1 - ax[0] ** 2);
+      for (let k = 0; k < 9; k++) {
+        const a = rand() * Math.PI * 2, d = between(rand, [8, Math.max(9, ir * 0.7)]);
+        const st = rect([ctr[0] + Math.cos(a) * d, ctr[1] + Math.sin(a) * d], ax, between(rand, [3, 5]), between(rand, [2, 3]));
+        if (st.every(q => inside(block, q))) city.stalls.push(st);
+      }
+      city.labels.push({ at: [ctr[0], ctr[1] - Math.min(ir * 0.55, 14)], text: 'Marché' });
     } else if (c.building) {
       special(c.building, block, rand, c);
     } else if (c.steep) {
       (c.inner ? city.terraces : city.vineyards).push(block);   // pente : terrasses ou vignes, pas de maisons
-    } else if (c.citadel) {
-      city.ground.citadel.push(block);
-      people += plots(block, 'citadelle', rand, { skip: 0.55 }) * ZONES.citadelle.people;
-    } else if (c.inner) {
-      const z = ZONES[zone];
-      people += plots(block, zone, rand, { richEdge: mainRoadEdgesOf(c, block), skip: zone === 'neuf' ? 0.08 : 0.02 }) * z.people;
-    } else if (touches(c, roadEdges) && dC(c) < R * 1.5 && !touchesBorder(c)) {
-      // Faubourg : maisons le long de la route seulement, potagers derrière
-      city.meadows.push(block);
-      people += plots(block, 'faubourg', rand, { skip: 0.3, onlyEdge: mainRoadEdgesOf(c, block) }) * ZONES.faubourg.people;
     } else {
-      city.fields[rand() < 0.5 ? 0 : 1].push(block);
+      // Champs en lanières (openfield), orientation propre à chaque quartier de terre
+      const field = Geo.inset(poly, keys.map(k => withRiver(k, roadEdges.has(k) ? 5.5 : 2)));
+      if (field.length < 3) continue;
+      const a = rand() * Math.PI;
+      const strips = stripCut(field, [Math.cos(a), Math.sin(a)], [10, 22], rand);
+      strips.forEach(st => city.fieldStrips[Math.floor(rand() * 3)].push(st));
+      if (rand() < 0.15) city.meadows.push(field);
     }
   }
 
-  // Étiquettes de quartiers ; la citadelle a la sienne
+  // La citadelle a son étiquette
   if (citadelSet.size > 1) {
-    const cs = [...citadelSet].map(ci => cells[ci].site);
     const free = cells.filter(c => c.citadel && !c.building);
-    const at = free.length ? free.reduce((m, c) => (dist(c.site, cs[0]) < dist(m.site, cs[0]) ? c : m)).site : cs[0];
+    const ref = cells[[...citadelSet][0]].site;
+    const at = free.length ? free.reduce((m, c) => (dist(c.site, ref) < dist(m.site, ref) ? c : m)).site : ref;
     city.labels.push({ at, text: 'Citadelle', italic: true });
   }
 
@@ -1118,6 +1461,8 @@ function generateCity(opts) {
     rivers: rivers.length,
     relief, age,
     diameter: Math.round((Math.max(...wall.map(id => verts[id][0])) - Math.min(...wall.map(id => verts[id][0]))) / 10) * 10,
+    streets: [...fclass.values()].filter(v => v === 'rue').length,
+    alleys: [...fclass.values()].filter(v => v === 'ruelle').length,
     missing,
   };
   return city;
