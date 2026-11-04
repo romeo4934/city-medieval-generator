@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Générateur de villes médiévales</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside>
+    <h1>Villes médiévales</h1>
+
+    <label>Nom de la ville
+      <input id="cityName" type="text" spellcheck="false">
+    </label>
+
+    <label>Graine
+      <input id="seed" type="text" spellcheck="false">
+    </label>
+
+    <div class="row">
+      <label>Taille
+        <select id="size">
+          <option value="petite">Petite</option>
+          <option value="moyenne" selected>Moyenne</option>
+          <option value="grande">Grande</option>
+          <option value="capitale">Capitale</option>
+        </select>
+      </label>
+      <label>Rivières
+        <select id="river">
+          <option value="auto" selected>Au hasard</option>
+          <option value="non">Aucune</option>
+          <option value="oui">Une</option>
+          <option value="deux">Deux</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="row">
+      <label>Colline
+        <select id="hill">
+          <option value="auto" selected>Au hasard</option>
+          <option value="oui">Oui</option>
+          <option value="non">Non</option>
+        </select>
+      </label>
+      <label>Murs intérieurs
+        <select id="inner">
+          <option value="aucun" selected>Aucun</option>
+          <option value="un">Un quartier</option>
+          <option value="plusieurs">Plusieurs</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="buttons">
+      <button id="random" class="primary">Nouvelle ville</button>
+      <button id="apply">Appliquer</button>
+    </div>
+
+    <details open>
+      <summary>Bâtiments importants</summary>
+      <div id="buildings" class="checks"></div>
+    </details>
+
+    <section id="info"></section>
+
+    <details open>
+      <summary>Quartiers <span class="muted">(clique pour renommer)</span></summary>
+      <div id="districts"></div>
+    </details>
+
+    <div class="buttons">
+      <button id="save">Enregistrer</button>
+      <button id="load">Charger</button>
+      <input id="file" type="file" accept=".json,application/json" hidden>
+    </div>
+    <div class="buttons">
+      <button id="svg">Exporter SVG</button>
+      <button id="png">Exporter PNG</button>
+    </div>
+
+    <p class="hint">Même graine + mêmes réglages = même ville. « Enregistrer » crée un petit fichier .json avec tous les réglages et les noms ; « Charger » le rouvre. L'adresse de la page garde aussi tout : tu peux la mettre en favori.</p>
+  </aside>
+
+  <main>
+    <div id="map"></div>
+    <div class="zoom">
+      <button id="zoomIn" title="Zoomer">+</button>
+      <button id="zoomOut" title="Dézoomer">−</button>
+      <button id="zoomReset" title="Vue entière">⤢</button>
+    </div>
+  </main>
+
+  <script src="generator.js"></script>
+  <script src="render.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
