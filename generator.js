@@ -506,13 +506,18 @@ function generateCity(opts) {
   // Anciennes enceintes : restent à l'intérieur, en partie démolies (brèches)
   const oldWallEdges = new Set();
   const oldWalls = [];
+  // On suit le tracé dans l'ordre : le mur est conservé ou démoli par longs tronçons, jamais
+  // segment par segment. Là où une rivière longe le tracé, c'est elle qui défendait : rien à dessiner.
   for (let k = ringSets.length - 2; k >= 0; k--) {
-    const keep = k === 0 && age === 3 ? 0.55 : 0.75;
-    for (const [a, b] of boundary(ringSets[k])) {
-      const key = ek(a, b);
-      if (wallEdges.has(key) || oldWallEdges.has(key)) continue;
+    const loop = loopOf(boundary(ringSets[k]));
+    const keep = k === 0 && age === 3 ? 0.45 : 0.65;   // part encore debout (la plus vieille enceinte a plus souffert)
+    let standing = rA() < keep, run = 0, runLen = 2 + Math.floor(rA() * 5);
+    for (let i = 0; i < loop.length; i++) {
+      const a = loop[i], b = loop[(i + 1) % loop.length], key = ek(a, b);
+      if (run++ >= runLen) { standing = rA() < keep; run = 1; runLen = 2 + Math.floor(rA() * 6); }
+      if (wallEdges.has(key) || oldWallEdges.has(key) || riverEdgeW.has(key)) continue;
       oldWallEdges.add(key);
-      oldWalls.push({ a, b, standing: rA() < keep, ring: k });
+      oldWalls.push({ a, b, standing, ring: k });
     }
   }
 
@@ -662,14 +667,15 @@ function generateCity(opts) {
   roads.forEach(p => { for (let k = 0; k + 1 < p.length; k++) roadEdges.add(ek(p[k], p[k + 1])); });
 
   // Portes des anciennes enceintes : là où une route franchit un vieux mur
-  const oldWallVerts = new Set(oldWalls.flatMap(w => [w.a, w.b]));
+  const standingOld = oldWalls.filter(w => w.standing);   // une porte n'existe que dans un mur encore debout
+  const oldWallVerts = new Set(standingOld.flatMap(w => [w.a, w.b]));
   const oldGates = [];
   roads.forEach(p => {
     for (let k = 1; k + 1 < p.length; k++) {
       const v = p[k];
       if (!oldWallVerts.has(v) || oldWallEdges.has(ek(p[k - 1], v)) || oldWallEdges.has(ek(v, p[k + 1]))) continue;
       if (oldGates.some(g => g.v === v)) continue;
-      const ws = oldWalls.filter(w => w.a === v || w.b === v).map(w => (w.a === v ? w.b : w.a));
+      const ws = standingOld.filter(w => w.a === v || w.b === v).map(w => (w.a === v ? w.b : w.a));
       if (ws.length === 2) oldGates.push({ v, at: verts[v], prev: verts[ws[0]], next: verts[ws[1]] });
     }
   });
@@ -965,7 +971,7 @@ function generateCity(opts) {
     if (riverEdgeW.has(ck)) return 'river';
     if (citadelEdges.has(ck)) return 'wall2';
     if (roadEdges.has(ck)) return 'main';
-    if (oldWallStanding.has(ck)) return oldWallStanding.get(ck) ? 'oldwall' : 'rue'; // mur démoli → boulevard
+    if (oldWallStanding.has(ck)) return oldWallStanding.get(ck) ? 'oldwall' : 'boulevard'; // mur démoli → boulevard
     const other = (edgeCells.get(ck) || []).map(ci => cells[ci]).find(o => o !== from);
     if (!other) return 'edge';
     if (other.type === 'plaza' || other.building) return 'place';
@@ -1169,8 +1175,8 @@ function generateCity(opts) {
     city.trees.push([c[0] + Math.cos(a) * d, c[1] + Math.sin(a) * d, Math.min(ir * 0.9, between(rand, [2.5, 4.5]))]);
   };
 
-  const INSET = { main: 5, rue: 2.6, ruelle: 1.5, place: 2.5, wall: 7, wall2: 5, oldwall: 3, edge: 2.5, back: 1.5, none: 0 };
-  const FRONTS = new Set(['main', 'rue', 'ruelle', 'place']);
+  const INSET = { main: 5, boulevard: 4.5, rue: 2.6, ruelle: 1.5, place: 2.5, wall: 7, wall2: 5, oldwall: 3, edge: 2.5, back: 1.5, none: 0 };
+  const FRONTS = new Set(['main', 'boulevard', 'rue', 'ruelle', 'place']);
   const TREES = { vieille: 0.05, bourg: 0.25, neuf: 0.45, faubourg: 0.5, citadelle: 0.15 };
   const interiorGround = zone => (zone === 'vieille' || zone === 'citadelle' ? 'court' : 'garden');
 
@@ -1225,7 +1231,7 @@ function generateCity(opts) {
       const cls = classes[i];
       if (!FRONTS.has(cls) || (suburb && cls !== 'main') || L < 4) continue;
       const u = [(B[0] - A[0]) / L, (B[1] - A[1]) / L], n = [-u[1] * s, u[0] * s];
-      const rich = cls === 'main' || cls === 'place';
+      const rich = cls === 'main' || cls === 'place' || cls === 'boulevard';
       const alley = cls === 'ruelle';
       const front = rich ? [Z.front[0], Z.front[0] + 2.5] : alley ? [Z.front[0] + 2, Z.front[1] + 3] : Z.front;
       const skip = alley ? 0.45 : suburb ? 0.35 : zone === 'neuf' ? 0.08 : 0.03;
@@ -1311,7 +1317,12 @@ function generateCity(opts) {
     const classes = keys.map(k => fclass.get(k));
     const dists = keys.map((k, i) => (classes[i] === 'river' ? riverEdgeW.get(fineOnCoarse.get(k)) / 2 + 2.5 : INSET[classes[i]]));
     const block = Geo.inset(poly, dists);
-    if (block.length < 3) continue;
+    if (block.length < 3) {
+      // Cellule trop fine pour bâtir : un bout de jardin plutôt qu'un vide
+      const sliver = Geo.inset(poly, dists.map(d => d * 0.6));
+      if (sliver.length >= 3) city.ground.garden.push(sliver);
+      continue;
+    }
     const rand = rng('parcelle|' + opts.size + '|' + fc.coarse.index + '|' + fc.index);
     if (fc.suburb) city.suburbGround.push(block);
     people += frontage(block, classesAfterInset(poly, dists, classes, block), fc.zone, rand, fc.suburb) * ZONES[fc.zone].people;

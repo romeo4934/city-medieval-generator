@@ -50,7 +50,7 @@ const COLORS = {
   waterLine: '#7ea8c0',
   contour: '#a8946a',
   wall: '#4a433c',
-  oldWall: '#7a7066',
+  oldWall: '#625a52',
   district: '#8a7d66',
   ink: '#2f2a24',
 };
@@ -151,16 +151,14 @@ function renderSVG(city) {
   // Courbes de niveau par-dessus la ville, très discrètes
   if (contourD) out.push(`<path d="${contourD}" fill="none" stroke="${COLORS.contour}" stroke-opacity=".22" stroke-width="1.1"/>`);
 
-  // Anciennes enceintes : debout (trait plein) ou ruinées (pointillé)
-  const standing = city.oldWalls.filter(w => w.standing), ruined = city.oldWalls.filter(w => !w.standing);
-  if (standing.length) out.push(`<path d="${standing.map(w => lineD([w.a, w.b])).join('')}" fill="none" stroke="${COLORS.oldWall}" stroke-width="4" stroke-linecap="round"/>`);
-  if (ruined.length) out.push(`<path d="${ruined.map(w => lineD([w.a, w.b])).join('')}" fill="none" stroke="${COLORS.oldWall}" stroke-opacity=".6" stroke-width="2" stroke-dasharray="2 6" stroke-linecap="round"/>`);
-  // Tours des vieux murs encore debout
-  {
+  // Anciennes enceintes : seuls les tronçons encore debout sont dessinés (les démolis sont devenus boulevards)
+  const standing = city.oldWalls.filter(w => w.standing);
+  if (standing.length) {
+    out.push(`<path d="${standing.map(w => lineD([w.a, w.b])).join('')}" fill="none" stroke="${COLORS.oldWall}" stroke-width="5" stroke-linecap="round"/>`);
     const placed = [];
     for (const w of standing) for (const p of [w.a, w.b]) {
-      if (placed.some(t => Math.hypot(p[0] - t[0], p[1] - t[1]) < 28)) continue;
-      out.push(`<circle cx="${n1(p[0])}" cy="${n1(p[1])}" r="4" fill="${COLORS.oldWall}"/>`);
+      if (placed.some(t => Math.hypot(p[0] - t[0], p[1] - t[1]) < 30)) continue;
+      out.push(`<circle cx="${n1(p[0])}" cy="${n1(p[1])}" r="5" fill="${COLORS.oldWall}"/>`);
       placed.push(p);
     }
   }
