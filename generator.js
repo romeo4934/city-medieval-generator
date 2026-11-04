@@ -101,6 +101,20 @@ const Geo = {
   },
 };
 
+// Lissage de Chaikin (garde les extrémités)
+function smooth(pts, iterations) {
+  for (let it = 0; it < iterations; it++) {
+    const out = [pts[0]];
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const a = pts[i], b = pts[i + 1];
+      out.push([a[0] * 0.75 + b[0] * 0.25, a[1] * 0.75 + b[1] * 0.25], [a[0] * 0.25 + b[0] * 0.75, a[1] * 0.25 + b[1] * 0.75]);
+    }
+    out.push(pts[pts.length - 1]);
+    pts = out;
+  }
+  return pts;
+}
+
 // Cellule de Voronoi de chaque point, par découpages successifs d'un carré
 function voronoi(sites, E) {
   const box = [[-E, -E], [E, -E], [E, E], [-E, E]];
@@ -296,22 +310,78 @@ function generateCity(opts) {
   }
   const wallEdges = new Set(wall.map((a, k) => ek(a, wall[(k + 1) % wall.length])));
 
-  // 4. Rivières : bandes droites qui traversent la carte (la 2e croise la 1re)
+  // Graphe des bords d'îlots, utilisé par les rivières puis par les routes
+  const link = (adj, a, b, cost) => {
+    (adj[a] = adj[a] || []).push({ to: b, cost });
+    (adj[b] = adj[b] || []).push({ to: a, cost });
+  };
+  const isBorder = id => Math.max(Math.abs(verts[id][0]), Math.abs(verts[id][1])) > E - 0.5;
+  const borderVerts = verts.map((v, i) => i).filter(isBorder);
+  // Sommets du bord reliés à l'intérieur (pas les coins) : points d'entrée possibles
+  const entries = new Set();
+  for (const key of edgeCells.keys()) {
+    const [a, b] = key.split('_').map(Number);
+    if (isBorder(a) !== isBorder(b)) entries.add(isBorder(a) ? a : b);
+  }
+  const nearestBorder = T => [...entries].reduce((m, v) =>
+    (m < 0 || Math.hypot(verts[v][0] - T[0], verts[v][1] - T[1]) < Math.hypot(verts[m][0] - T[0], verts[m][1] - T[1]) ? v : m), -1);
+
+  // 4. Rivières : elles suivent les bords d'îlots, avec des méandres tirés au hasard.
+  // La 2e est un affluent qui se jette dans la 1re.
   const rR = rng('rivieres');
   const autoCount = rR();
   const count = opts.river === 'non' ? 0 : opts.river === 'oui' ? 1 : opts.river === 'deux' ? 2
     : autoCount < 0.45 ? 0 : autoCount < 0.85 ? 1 : 2;
+  const a0 = rR() * Math.PI * 2, off0 = (rR() - 0.5) * R * 0.8;
+  const a1 = a0 + (rR() < 0.5 ? 1 : -1) * (Math.PI / 3 + rR() * Math.PI / 3), off1 = (rR() - 0.5) * R * 0.6;
+  const rM = rng('meandres');
+  const wiggle = new Map();
+  for (const key of edgeCells.keys()) wiggle.set(key, 0.35 + rM() * 1.3);
+  const riverAdj = exclude => {
+    const adj = [];
+    for (const key of edgeCells.keys()) {
+      const [a, b] = key.split('_').map(Number);
+      if ((isBorder(a) && isBorder(b)) || exclude.has(key)) continue;
+      const A = verts[a], B = verts[b];
+      const mid = [(A[0] + B[0]) / 2, (A[1] + B[1]) / 2];
+      const centre = Math.hypot(mid[0], mid[1]) < R * 0.3 ? 3 : 1; // pas en plein centre
+      link(adj, a, b, Math.hypot(B[0] - A[0], B[1] - A[1]) * wiggle.get(key) * centre);
+    }
+    return adj;
+  };
   const rivers = [];
-  const a0 = rR() * Math.PI;
-  for (let k = 0; k < 2; k++) {
-    const a = k === 0 ? a0 : a0 + Math.PI / 4 + rR() * Math.PI / 2;
-    const dir = [Math.cos(a), Math.sin(a)], nr = [-dir[1], dir[0]];
-    const off = (rR() < 0.5 ? -1 : 1) * R * (0.3 + rR() * 0.3);
-    const w = (14 + N * 0.15) * (k === 0 ? 1 : 0.7);
-    if (k < count) rivers.push({ P0: [nr[0] * off, nr[1] * off], dir, nr, w });
+  const riverEdgeW = new Map();   // bord d'îlot → largeur de la rivière qui le longe
+  const W = 14 + N * 0.15;
+  if (count >= 1) {
+    const dir = [Math.cos(a0), Math.sin(a0)], P0 = [-dir[1] * off0, dir[0] * off0];
+    const from = nearestBorder([P0[0] - dir[0] * 2 * E, P0[1] - dir[1] * 2 * E]);
+    const to = nearestBorder([P0[0] + dir[0] * 2 * E, P0[1] + dir[1] * 2 * E]);
+    const sp = shortestPaths(riverAdj(new Set()), verts.length, [to]);
+    if (isFinite(sp.dist[from])) rivers.push({ path: tracePath(sp.prev, from), w: W });
   }
-  const rf = (rv, q) => (q[0] - rv.P0[0]) * rv.nr[0] + (q[1] - rv.P0[1]) * rv.nr[1];
-  const riverDist = q => rivers.reduce((m, rv) => Math.min(m, Math.abs(rf(rv, q)) - rv.w / 2), Infinity);
+  if (count >= 2 && rivers.length) {
+    const main = rivers[0].path;
+    const mainKeys = new Set(main.slice(1).map((v, k) => ek(main[k], v)));
+    const dir = [Math.cos(a1), Math.sin(a1)], P1 = [-dir[1] * off1, dir[0] * off1];
+    const from = nearestBorder([P1[0] - dir[0] * 2 * E, P1[1] - dir[1] * 2 * E]);
+    const sp = shortestPaths(riverAdj(mainKeys), verts.length, [from]);
+    let to = -1;
+    for (const v of main) if (!isBorder(v) && isFinite(sp.dist[v]) && (to < 0 || sp.dist[v] < sp.dist[to])) to = v;
+    if (to >= 0 && !main.includes(from)) rivers.push({ path: tracePath(sp.prev, to).reverse(), w: W * 0.65 });
+  }
+  for (const rv of rivers) {
+    for (let k = 0; k + 1 < rv.path.length; k++) {
+      const key = ek(rv.path[k], rv.path[k + 1]);
+      riverEdgeW.set(key, Math.max(riverEdgeW.get(key) || 0, rv.w));
+    }
+  }
+  const riverDist = q => {
+    let m = Infinity;
+    for (const rv of rivers) for (let k = 0; k + 1 < rv.path.length; k++) {
+      m = Math.min(m, Geo.distToSegment(q, verts[rv.path[k]], verts[rv.path[k + 1]]) - rv.w / 2);
+    }
+    return m;
+  };
 
   // 5. Colline
   const rH = rng('colline');
@@ -345,59 +415,83 @@ function generateCity(opts) {
     if (best >= 0) gates.push(best);
   }
 
+  // Coupe une cellule en deux, du sommet v vers le sommet le plus éloigné
+  const farOf = (X, v) => {
+    const ids = X.ids, n = ids.length, i = ids.indexOf(v);
+    if (n < 4 || i < 0) return -1;
+    let j = -1, bd = -1;
+    for (let k = 2; k <= n - 2; k++) {
+      const q = verts[ids[(i + k) % n]], d = Math.hypot(q[0] - verts[v][0], q[1] - verts[v][1]);
+      if (d > bd) { bd = d; j = ids[(i + k) % n]; }
+    }
+    return j;
+  };
+  const splitAt = (X, v, far) => {
+    const ids = X.ids, n = ids.length, i = ids.indexOf(v), j = ids.indexOf(far);
+    if (i < 0 || j < 0) return false;
+    const span = (from, to) => { const out = [ids[from]]; for (let k = from; k !== to;) { k = (k + 1) % n; out.push(ids[k]); } return out; };
+    const a = span(i, j), b = span(j, i);
+    if (a.length < 3 || b.length < 3) return false;
+    X.ids = a;
+    X.site = Geo.centroid(a.map(id => verts[id]));
+    const twin = { index: cells.length, site: Geo.centroid(b.map(id => verts[id])), ids: b, inner: X.inner, type: null, building: null };
+    cells.push(twin);
+    b.forEach(id => cellsAt.get(id).push(twin));
+    return true;
+  };
+
   // La cellule extérieure de chaque porte est coupée en deux : la route sort par là
   for (const g of gates) {
     const outside = outsideOf(g);
     if (outside.length !== 1) continue;
-    const X = outside[0], ids = X.ids, n = ids.length;
-    const i = ids.indexOf(g);
-    if (n < 4 || i < 0) continue;
-    let j = -1, bd = -1;
-    for (let k = 2; k <= n - 2; k++) {
-      const v = verts[ids[(i + k) % n]], d = Math.hypot(v[0] - verts[g][0], v[1] - verts[g][1]);
-      if (d > bd) { bd = d; j = (i + k) % n; }
-    }
-    const span = (from, to) => { const out = [ids[from]]; for (let k = from; k !== to;) { k = (k + 1) % n; out.push(ids[k]); } return out; };
-    const a = span(i, j), b = span(j, i);
-    X.ids = a;
-    X.site = Geo.centroid(a.map(id => verts[id]));
-    const twin = { index: cells.length, site: Geo.centroid(b.map(id => verts[id])), ids: b, inner: false, type: null, building: null };
-    cells.push(twin);
-    (cellsAt.get(g) || []).push(twin);
+    const far = farOf(outside[0], g);
+    if (far >= 0) splitAt(outside[0], g, far);
   }
   indexEdges();
 
   // 7. Place du marché : la cellule la plus centrale qui n'est pas dans l'eau
   const innerCells = cells.filter(c => c.inner);
+  const touches = (c, set) => cellEdges(c).some(([a, b]) => set.has(ek(a, b)));
   const plaza = [...innerCells].sort((a, b) => Math.hypot(...a.site) - Math.hypot(...b.site))
-    .find(c => riverDist(c.site) > 15) || innerCells[0];
+    .find(c => !touches(c, riverEdgeW) && riverDist(c.site) > 15) || innerCells[0];
   plaza.type = 'plaza';
 
-  // 8. Routes : porte → place, et porte → bord de la carte
-  const edgeCost = (a, b) => {
-    const A = verts[a], B = verts[b];
-    let c = Math.hypot(B[0] - A[0], B[1] - A[1]);
-    for (const rv of rivers) {
-      const fa = rf(rv, A), fb = rf(rv, B), hw = rv.w / 2;
-      if (Math.abs((fa + fb) / 2) < hw + 4 || Math.abs(fa) < hw || Math.abs(fb) < hw) c *= 8; // pas dans l'eau
-      else if (fa * fb < 0) c += 60;                                                        // un pont coûte cher
-    }
-    return c;
-  };
+  // 8. Routes : porte → place, et porte → bord de la carte.
+  // Les routes ne longent jamais l'eau ; pour franchir une rivière, elles passent par un
+  // « pont virtuel » : depuis un sommet de la rive, à travers l'îlot d'en face (coupé ensuite).
+  const edgeCost = (a, b) => Math.hypot(verts[b][0] - verts[a][0], verts[b][1] - verts[a][1]);
   const innerAdj = [], outerAdj = [];
-  const link = (adj, a, b, cost) => {
-    (adj[a] = adj[a] || []).push({ to: b, cost });
-    (adj[b] = adj[b] || []).push({ to: a, cost });
-  };
   for (const [key, cs] of edgeCells) {
+    if (riverEdgeW.has(key)) continue;
     const [a, b] = key.split('_').map(Number);
     if (cs.some(ci => cells[ci].inner)) link(innerAdj, a, b, edgeCost(a, b) * (wallEdges.has(key) ? 4 : 1));
     else link(outerAdj, a, b, edgeCost(a, b));
     if (wallEdges.has(key)) link(outerAdj, a, b, edgeCost(a, b) * 6); // dernier recours : longer le rempart
   }
+  const virtual = new Map();
+  for (const rv of rivers) {
+    const p = rv.path;
+    for (let k = 1; k + 1 < p.length; k++) {
+      const v = p[k];
+      if (isBorder(v) || gates.includes(v)) continue;
+      // L'îlot « seul » de son côté : il contient les deux bords de rivière autour de v
+      const X = (cellsAt.get(v) || []).find(c => {
+        const i = c.ids.indexOf(v), n = c.ids.length;
+        if (i < 0) return false;
+        const nb = [c.ids[(i + 1) % n], c.ids[(i - 1 + n) % n]];
+        return nb.includes(p[k - 1]) && nb.includes(p[k + 1]);
+      });
+      if (!X || X.type === 'plaza') continue;
+      const far = farOf(X, v);
+      if (far < 0 || riverEdgeW.has(ek(v, far))) continue;
+      const others = (cellsAt.get(v) || []).filter(c => c !== X);
+      const inner = X.inner && others.some(c => c.inner);
+      link(inner ? innerAdj : outerAdj, v, far, edgeCost(v, far) + 80);
+      virtual.set(ek(v, far), { X, v, far, w: rv.w });
+    }
+  }
 
   const fromPlaza = shortestPaths(innerAdj, verts.length, plaza.ids);
-  const borderVerts = verts.map((v, i) => i).filter(i => Math.max(Math.abs(verts[i][0]), Math.abs(verts[i][1])) > E - 0.5);
   const roads = [];
   for (const g of gates) {
     roads.push(tracePath(fromPlaza.prev, g));
@@ -412,34 +506,29 @@ function generateCity(opts) {
     }
     if (best >= 0) roads.push(tracePath(out.prev, best).reverse());
   }
+
+  // Ponts : on réalise les ponts virtuels empruntés
+  const bridges = [];
+  const builtBridges = new Set();
+  roads.forEach(p => {
+    for (let k = 0; k + 1 < p.length; k++) {
+      const key = ek(p[k], p[k + 1]);
+      const vb = virtual.get(key);
+      if (!vb || builtBridges.has(key)) continue;
+      builtBridges.add(key);
+      splitAt(vb.X, vb.v, vb.far);
+      const at = verts[vb.v], to = verts[vb.far];
+      const k2 = p[k] === vb.v ? k - 1 : k + 2;           // sommet de la route de l'autre côté
+      const from = verts[p[Math.max(0, Math.min(p.length - 1, k2))]];
+      const ang = Math.atan2(to[1] - from[1], to[0] - from[0]);
+      bridges.push({ x: at[0], y: at[1], angle: (ang * 180) / Math.PI, length: vb.w + 12 });
+    }
+  });
+  indexEdges();
   const roadEdges = new Set();
   roads.forEach(p => { for (let k = 0; k + 1 < p.length; k++) roadEdges.add(ek(p[k], p[k + 1])); });
 
-  const bridges = [];
-  for (const rv of rivers) {
-    const done = new Set();
-    roads.forEach(p => {
-      for (let k = 0; k + 1 < p.length; k++) {
-        const key = ek(p[k], p[k + 1]);
-        const A = verts[p[k]], B = verts[p[k + 1]];
-        const fa = rf(rv, A), fb = rf(rv, B);
-        if (fa * fb >= 0 || done.has(key)) continue;
-        done.add(key);
-        const t = fa / (fa - fb);
-        const L = Math.hypot(B[0] - A[0], B[1] - A[1]);
-        const d = [(B[0] - A[0]) / L, (B[1] - A[1]) / L];
-        const cross = Math.max(0.3, Math.abs(d[0] * rv.nr[0] + d[1] * rv.nr[1]));
-        bridges.push({
-          x: A[0] + (B[0] - A[0]) * t, y: A[1] + (B[1] - A[1]) * t,
-          angle: (Math.atan2(d[1], d[0]) * 180) / Math.PI,
-          length: (rv.w + 8) / cross,
-        });
-      }
-    });
-  }
-
   // 9. Bâtiments importants
-  const touches = (c, set) => cellEdges(c).some(([a, b]) => set.has(ek(a, b)));
   const dC = c => Math.hypot(c.site[0], c.site[1]);
   const gateVerts = gates.map(g => verts[g]);
   const missing = [];
@@ -461,7 +550,7 @@ function generateCity(opts) {
         break;
       case 'river':
         if (!rivers.length) { missing.push(b.label + ' (pas de rivière)'); continue; }
-        pool = pool.filter(c => riverDist(c.site) < cellR);
+        pool = pool.filter(c => touches(c, riverEdgeW));
         score = c => riverDist(c.site);
         break;
       case 'outside':
@@ -469,8 +558,8 @@ function generateCity(opts) {
         score = c => Math.abs(dC(c) - 1.2 * R);
         break;
       case 'mill':
-        pool = cells.filter(c => !c.inner && !c.type && dC(c) < R * 1.5);
-        score = rivers.length ? c => Math.max(0, riverDist(c.site)) : c => Math.abs(dC(c) - 1.25 * R);
+        pool = cells.filter(c => !c.inner && !c.type && dC(c) < R * 1.5 && (!rivers.length || touches(c, riverEdgeW)));
+        score = c => Math.abs(dC(c) - 1.2 * R);
         break;
     }
     if (b.hill && hill) {
@@ -498,7 +587,6 @@ function generateCity(opts) {
     }
     germs.push(best);
   }
-  const crossesRiver = (p, q) => rivers.some(rv => rf(rv, p) * rf(rv, q) < 0);
   const owner = new Map(), cost = new Map();
   germs.forEach((g, k) => { owner.set(g.index, k); cost.set(g.index, 0); });
   const open = new Set(germs.map(g => g.index));
@@ -510,7 +598,7 @@ function generateCity(opts) {
     cellEdges(cu).forEach(([a, b]) => edgeCells.get(ek(a, b)).forEach(vi => {
       const cv = cells[vi];
       if (vi === u || !cv.inner) return;
-      const d = bu + Math.hypot(cv.site[0] - cu.site[0], cv.site[1] - cu.site[1]) + (crossesRiver(cu.site, cv.site) ? 400 : 0);
+      const d = bu + Math.hypot(cv.site[0] - cu.site[0], cv.site[1] - cu.site[1]) + (riverEdgeW.has(ek(a, b)) ? 400 : 0);
       if (d < (cost.has(vi) ? cost.get(vi) : Infinity)) { cost.set(vi, d); owner.set(vi, owner.get(u)); open.add(vi); }
     }));
   }
@@ -534,7 +622,7 @@ function generateCity(opts) {
     const has = id => d.cells.some(c => c.type === id);
     const mid = [d.cells.reduce((s, c) => s + c.site[0], 0) / d.cells.length, d.cells.reduce((s, c) => s + c.site[1], 0) / d.cells.length];
     d.onHill = !!hill && (hillDist(mid) < hill.r * 0.8 || d.cells.some(c => hillDist(c.site) < hill.r * 0.4));
-    const nearRiver = d.cells.some(c => riverDist(c.site) < cellR * 0.8);
+    const nearRiver = d.cells.some(c => touches(c, riverEdgeW));
     const gateCell = d.cells.find(c => c.ids.some(id => gates.includes(id)));
     let auto = null;
     if (has('plaza')) auto = fixed('Vieille Ville');
@@ -602,17 +690,9 @@ function generateCity(opts) {
   }
 
   // 12. Îlots → parcelles → maisons
-  const cutRivers = poly => {
-    let parts = [poly];
-    for (const rv of rivers) {
-      const hw = rv.w / 2 + 2, P = rv.P0, n = rv.nr;
-      parts = parts.flatMap(p => [
-        Geo.clip(p, P[0] + n[0] * hw, P[1] + n[1] * hw, n[0], n[1]),
-        Geo.clip(p, P[0] - n[0] * hw, P[1] - n[1] * hw, -n[0], -n[1]),
-      ]);
-    }
-    return parts.filter(p => p.length >= 3 && Math.abs(Geo.area(p)) > 20);
-  };
+  // Les rivières longent les îlots : ils sont simplement rétrécis de ce côté-là
+  const cutRivers = poly => (poly.length >= 3 && Math.abs(Geo.area(poly)) > 20 ? [poly] : []);
+  const withRiver = (k, d) => (riverEdgeW.has(k) ? Math.max(d, riverEdgeW.get(k) / 2 + 2.5) : d);
 
   const subdivide = (poly, minArea, rand, out, depth = 0) => {
     const a = Math.abs(Geo.area(poly));
@@ -633,7 +713,8 @@ function generateCity(opts) {
   };
 
   const city = {
-    name, autoName, seed: opts.seed, size: opts.size, R, E, rivers, bridges, hill: null,
+    name, autoName, seed: opts.seed, size: opts.size, R, E, bridges, hill: null,
+    rivers: rivers.map(rv => ({ w: rv.w, points: smooth(rv.path.map(id => verts[id]), 3) })),
     wall: wall.map(id => verts[id]),
     gates: gates.map(id => {
       const k = wall.indexOf(id);
@@ -749,7 +830,7 @@ function generateCity(opts) {
     const rand = rng('ilot|' + opts.size + '|' + c.index);
 
     if (c.inner) {
-      const dists = edges.map(k => (wallEdges.has(k) ? 7 : innerWallEdges.has(k) ? 5 : roadEdges.has(k) ? 6 : 2.5));
+      const dists = edges.map(k => withRiver(k, wallEdges.has(k) ? 7 : innerWallEdges.has(k) ? 5 : roadEdges.has(k) ? 6 : 2.5));
       const yard = Geo.inset(poly, dists);
       if (yard.length < 3) continue;
       const parts = cutRivers(yard);
@@ -765,18 +846,18 @@ function generateCity(opts) {
         addLots(parts, 140, rand, 0.06);
       }
     } else if (c.building) {
-      const yard = Geo.inset(poly, edges.map(k => (roadEdges.has(k) ? 6 : 3)));
+      const yard = Geo.inset(poly, edges.map(k => withRiver(k, roadEdges.has(k) ? 6 : 3)));
       const parts = yard.length >= 3 ? cutRivers(yard) : [];
       if (parts.length) special(c.building, parts, parts.reduce((m, p) => (Math.abs(Geo.area(p)) > Math.abs(Geo.area(m)) ? p : m)), rand, true);
     } else if (touches(c, roadEdges) && dC(c) < R * 1.45) {
       // Faubourg : jardins + maisons le long des routes
       const roadSegs = cellEdges(c).filter(([a, b]) => roadEdges.has(ek(a, b))).map(([a, b]) => [verts[a], verts[b]]);
-      const yard = Geo.inset(poly, edges.map(k => (roadEdges.has(k) ? 6 : 3)));
+      const yard = Geo.inset(poly, edges.map(k => withRiver(k, roadEdges.has(k) ? 6 : 3)));
       const parts = yard.length >= 3 ? cutRivers(yard) : [];
       city.gardens.push(...parts);
       addLots(parts, 200, rand, 0.3, ctr => roadSegs.some(([a, b]) => Geo.distToSegment(ctr, a, b) < 28));
     } else {
-      const field = Geo.inset(poly, 3);
+      const field = Geo.inset(poly, edges.map(k => withRiver(k, 3)));
       if (field.length >= 3) for (const part of cutRivers(field)) city.fields[rand() < 0.5 ? 0 : 1].push(part);
     }
   }

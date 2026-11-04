@@ -64,25 +64,10 @@ function renderSVG(city) {
   // Sol pavé intra-muros (les rues = ce qui reste visible entre les îlots)
   out.push(`<path d="${pathD([city.wall])}" fill="${COLORS.street}"/>`);
 
-  // Rivières
-  for (const { P0, dir, nr, w } of city.rivers) {
-    const L = E * 3, h = w / 2;
-    const band = [
-      [P0[0] - dir[0] * L + nr[0] * h, P0[1] - dir[1] * L + nr[1] * h],
-      [P0[0] + dir[0] * L + nr[0] * h, P0[1] + dir[1] * L + nr[1] * h],
-      [P0[0] + dir[0] * L - nr[0] * h, P0[1] + dir[1] * L - nr[1] * h],
-      [P0[0] - dir[0] * L - nr[0] * h, P0[1] - dir[1] * L - nr[1] * h],
-    ];
-    out.push(`<path d="${pathD([band])}" fill="${COLORS.water}"/>`);
-    out.push(`<path d="${lineD([band[0], band[1]])}${lineD([band[2], band[3]])}" stroke="${COLORS.waterLine}" stroke-width="1.5" fill="none"/>`);
-  }
-  // Repeindre l'eau au croisement de deux rivières (efface les berges)
-  if (city.rivers.length > 1) {
-    for (const { P0, dir, nr, w } of city.rivers) {
-      const L = E * 3, h = w / 2 - 0.8;
-      out.push(`<path d="M${n1(P0[0] - dir[0] * L + nr[0] * h)} ${n1(P0[1] - dir[1] * L + nr[1] * h)}L${n1(P0[0] + dir[0] * L + nr[0] * h)} ${n1(P0[1] + dir[1] * L + nr[1] * h)}L${n1(P0[0] + dir[0] * L - nr[0] * h)} ${n1(P0[1] + dir[1] * L - nr[1] * h)}L${n1(P0[0] - dir[0] * L - nr[0] * h)} ${n1(P0[1] - dir[1] * L - nr[1] * h)}Z" fill="${COLORS.water}"/>`);
-    }
-  }
+  // Rivières (berge foncée puis eau, pour que l'affluent se fonde dans la rivière)
+  const riverD = city.rivers.map(rv => lineD(rv.points));
+  city.rivers.forEach((rv, k) => out.push(`<path d="${riverD[k]}" fill="none" stroke="${COLORS.waterLine}" stroke-width="${n1(rv.w + 3)}" stroke-linecap="round" stroke-linejoin="round"/>`));
+  city.rivers.forEach((rv, k) => out.push(`<path d="${riverD[k]}" fill="none" stroke="${COLORS.water}" stroke-width="${n1(rv.w)}" stroke-linecap="round" stroke-linejoin="round"/>`));
 
   // Routes principales
   const roadsD = city.roads.map(lineD).join('');
