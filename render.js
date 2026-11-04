@@ -12,6 +12,8 @@ const COLORS = {
   tree: '#b7c294',
   treeLine: '#8a9666',
   stall: '#d9b98e',
+  dryMoat: '#d4d3b4',
+  dryMoatLine: '#aea883',
   inn: '#a8573f',
   church: '#b3a6c2',
   meadow: '#dfe0c5',
@@ -111,6 +113,16 @@ function renderSVG(city) {
   // Courbes de niveau sous la ville
   const contourD = city.contours.map(segs => segs.map(s => lineD(s)).join('')).join('');
   if (contourD) out.push(`<path d="${contourD}" fill="none" stroke="${COLORS.contour}" stroke-opacity=".55" stroke-width="1.3"/>`);
+
+  // Fossé en anneau autour du rempart : en eau ou à sec. Tracé comme un trait large centré sur le
+  // rempart, puis la berme (bande de terre au pied du mur) ; l'intérieur est ensuite recouvert par la ville.
+  if (city.moat) {
+    const H = city.moat.outer, wallD = pathD([city.wall]);
+    const edge = city.moat.water ? COLORS.waterLine : COLORS.dryMoatLine, body = city.moat.water ? COLORS.water : COLORS.dryMoat;
+    out.push(`<path d="${wallD}" fill="none" stroke="${edge}" stroke-width="${n1(2 * H + 3)}" stroke-linejoin="round"/>`);
+    out.push(`<path d="${wallD}" fill="none" stroke="${body}" stroke-width="${n1(2 * H)}" stroke-linejoin="round"/>`);
+    out.push(`<path d="${wallD}" fill="none" stroke="${COLORS.meadow}" stroke-width="${n1(2 * (H - city.moat.width))}" stroke-linejoin="round"/>`);
+  }
 
   // Sol pavé intra-muros (les rues = ce qui reste visible entre les îlots)
   fill([city.wall], 'street');
@@ -223,15 +235,35 @@ function renderSVG(city) {
   }
 
   // Remparts, tours, portes
+  // Ponts sur le fossé, devant chaque porte
+  const wc = city.wall.reduce((a, p) => [a[0] + p[0] / city.wall.length, a[1] + p[1] / city.wall.length], [0, 0]);
+  if (city.moat) for (const g of city.gates) {
+    let ox = g.at[0] - wc[0], oy = g.at[1] - wc[1];
+    const L = Math.hypot(ox, oy) || 1; ox /= L; oy /= L;
+    const len = city.moat.outer + 4, ang = (Math.atan2(oy, ox) * 180) / Math.PI;
+    out.push(`<rect x="0" y="-5" width="${n1(len)}" height="10" fill="${COLORS.street}" stroke="${COLORS.buildingLine}" stroke-width="1.2" transform="translate(${n1(g.at[0])} ${n1(g.at[1])}) rotate(${n1(ang)})"/>`);
+  }
   out.push(`<path d="${pathD([city.wall])}" fill="none" stroke="${COLORS.wall}" stroke-width="7" stroke-linejoin="round"/>`);
-  let last = null;
-  const gateSet = new Set(city.gates.map(g => g.at));
-  city.wall.forEach(v => {
-    if (gateSet.has(v)) return;
-    if (last && Math.hypot(v[0] - last[0], v[1] - last[1]) < 30) return;
-    out.push(`<circle cx="${n1(v[0])}" cy="${n1(v[1])}" r="6.5" fill="${COLORS.wall}"/>`);
-    last = v;
-  });
+  // Tours : à chaque angle et tous les ~38 m, en saillie vers l'extérieur (demi-cercle hors du mur)
+  {
+    const W = city.wall, n = W.length, towers = [];
+    const area = W.reduce((acc, p, i) => acc + p[0] * W[(i + 1) % n][1] - W[(i + 1) % n][0] * p[1], 0);
+    const sg = area > 0 ? -1 : 1;   // signe de la normale extérieure
+    const near = (p, list, d) => list.some(q => Math.hypot(p[0] - q[0], p[1] - q[1]) < d);
+    const gatePts = city.gates.map(g => g.at);
+    for (let i = 0; i < n; i++) {
+      const A = W[i], B = W[(i + 1) % n], L = Math.hypot(B[0] - A[0], B[1] - A[1]);
+      if (L < 1) continue;
+      const nx = (-(B[1] - A[1]) / L) * sg, ny = ((B[0] - A[0]) / L) * sg;
+      const steps = Math.max(1, Math.round(L / 38));
+      for (let k = 0; k < steps; k++) {
+        const t = k / steps, p = [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t];
+        if (near(p, gatePts, 18) || near(p, towers, 22)) continue;
+        towers.push(p);
+        out.push(`<circle cx="${n1(p[0] + nx * 2.5)}" cy="${n1(p[1] + ny * 2.5)}" r="6" fill="${COLORS.wall}"/>`);
+      }
+    }
+  }
   gateMarks(city.gates, 12, COLORS.wall);
 
   // Portes d'eau : arche au-dessus de la rivière, tours sur chaque berge, herse
@@ -266,6 +298,7 @@ function renderSVG(city) {
   for (const l of city.labels) textAt(l.italic ? 'qtr' : 'lbl', l.italic ? fs * 1.15 : fs, l, true);
   for (const d of city.districts) textAt('qtr', fs * 1.15, { at: d.at, text: d.name }, true);
   for (const g of city.gateNames) textAt('gate', fs * 0.8, g, true);
+  for (const sq of city.squares) textAt('small', fs * 0.68, { at: [sq.at[0], sq.at[1] + fs * 0.9], text: sq.name }, false);
   for (const ch of city.churches) textAt('small', fs * 0.68, { at: ch.at, text: ch.name }, false);
   for (const inn of city.inns) textAt('inn', fs * 0.62, { at: [inn.at[0], inn.at[1] - fs * 0.9], text: inn.name }, false);
 

@@ -55,6 +55,8 @@ const STREET_NAMES = ['du Puits', 'des Trois-Rois', 'de la Lune', 'du Pélican',
 const ALLEY_NAMES = ['du Chat-Noir', 'des Pas-Perdus', 'Étroite', 'aux Rats', 'du Mauvais-Garçon', 'de la Lanterne',
   'du Coupe-Gorge', 'des Soupirs', 'de la Chandelle', 'du Bout-du-Monde'];
 const DEADEND_NAMES = ['du Four', 'des Chats', 'Sans-Nom', 'du Vieux-Puits', 'des Tonneliers', 'de la Corne', "de l'Échaudé", 'du Grand-Cerf'];
+const SQUARE_NAMES = ['Place aux Herbes', 'Place du Puits', 'Marché au Blé', 'Place aux Œufs', 'Place aux Bois',
+  'Marché aux Vaches', 'Place du Change', 'Place aux Draps', 'Place de la Fontaine', 'Place des Trois-Ormes'];
 const INN_NAMES = ['Au Cerf Blanc', 'Le Chaudron Fêlé', 'La Truie qui File', "Le Lion d'Or", "L'Écu d'Argent", "Le Pot d'Étain",
   'La Licorne Grise', 'Le Coq Hardi', 'La Pomme de Pin', 'Le Sanglier Rouge', 'La Lanterne Sourde', 'Le Bœuf Couronné',
   'Les Trois Corbeaux', 'La Sirène Ivre', 'Le Pendu Joyeux', 'Le Dragon Vert'];

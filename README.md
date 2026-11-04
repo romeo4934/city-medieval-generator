@@ -13,7 +13,7 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 - avec plusieurs collines, la plus haute porte l'acropole ; les autres, plus basses, gardent leurs pentes en vignes et portent un petit sanctuaire avec leur nom (Mont des Corbeaux, Butte aux Moulins…), et la ville se glisse dans les vallons ;
 - par où passent les **routes**, qui contournent les pentes.
 
-**La ville a une histoire.** Elle naît autour du marché, sur un terrain plat, près d'un gué s'il y a une rivière, puis s'étend en évitant pentes et cours d'eau. L'**âge de la ville** (1, 2 ou 3 enceintes) décide de combien de fois elle a débordé de ses murs. Chaque enceinte suit le tracé le plus court à défendre (elle englobe pentes et collines au lieu de les contourner). Les anciennes enceintes restent à l'intérieur en anneaux, debout ou démolies par longs tronçons ; les parties tombées sont devenues des boulevards, et les rues ont percé des brèches dans le reste. Là où la rivière entre dans la ville, une porte d'eau avec sa herse.
+**La ville a une histoire.** Elle naît autour du marché, sur un terrain plat, près d'un gué s'il y a une rivière, puis s'étend en évitant pentes et cours d'eau. L'**âge de la ville** (1, 2 ou 3 enceintes) décide de combien de fois elle a débordé de ses murs. Chaque enceinte suit le tracé le plus court à défendre (elle englobe pentes et collines au lieu de les contourner). Les anciennes enceintes restent à l'intérieur en anneaux, debout ou démolies par longs tronçons ; les parties tombées sont devenues des boulevards, et les rues ont percé des brèches dans le reste. Là où la rivière entre dans la ville, une porte d'eau avec sa herse. Comme à Nuremberg ou à Bruges, un **fossé** (en eau en plaine, à sec sur les hauteurs) fait le tour du rempart, franchi par un pont devant chaque porte, et des **tours en saillie** se succèdent tous les 38 m environ, comme à Carcassonne.
 
 **Le parcellaire est organique.** Chaque quartier est redécoupé en petites cellules. Les îlots sont des assemblages irréguliers de ces cellules, séparés par les grandes routes, puis par des rues secondaires, des ruelles et des impasses tracées en travers des îlots trop grands. Les maisons ne bordent que les rues : les remparts, les berges et les cœurs d'îlots reçoivent des cours, des jardins, des arbres et des clôtures. Dehors, les champs sont en lanières (openfield).
 
@@ -32,6 +32,8 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 - Le port est sur la rive en aval, le moulin sur la rivière (à vent sinon).
 - Le cimetière et le monastère sont hors les murs.
 - S'il n'y a pas de place logique, le bâtiment n'est pas placé et l'outil dit pourquoi.
+
+**De petites places** s'ouvrent aux croisements (comme le Weinmarkt de Nuremberg), avec leur puits. En ville, une partie des berges est bordée de **quais** où les maisons regardent l'eau (comme le Dijver à Bruges).
 
 **Chaque quartier a son église paroissiale** (Saint-Brice, Sainte-Foy…) dans son petit cimetière, et des **auberges** nommées attendent les voyageurs près des portes et du marché.
 

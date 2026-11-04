@@ -61,6 +61,9 @@ function citySheet(city) {
   if (riverNames.length === 1) site.push(`La rivière, ${riverNames[0]}, traverse la ville ; le marché s'est installé près de l'ancien gué.`);
   if (riverNames.length === 2) site.push(`${cap(riverNames[0])} traverse la ville et reçoit son affluent, ${riverNames[1]}.`);
   if (city.waterGates.length) site.push(`La rivière entre dans la ville sous ${city.waterGates.length > 1 ? city.waterGates.length + ' portes d’eau' : 'une porte d’eau'}, fermée la nuit par une herse.`);
+  if (city.moat) site.push(city.moat.water
+    ? `Un fossé en eau d'une quinzaine de mètres fait le tour du rempart ; on le franchit sur un pont devant chaque porte.`
+    : `Un fossé sec, creusé au pied du rempart, fait le tour de la ville ; un pont le franchit devant chaque porte.`);
   if (city.bridges.length) site.push(`${city.bridges.length > 1 ? city.bridges.length + ' ponts franchissent' : 'Un pont franchit'} la rivière.`);
   L.push(site.join(' '), '');
 
@@ -106,6 +109,7 @@ function citySheet(city) {
   L.push('## Lieux notables', '');
   for (const sp of city.specials) L.push(`- **${sp.label}**${sp.inner === false ? ' (hors les murs)' : ''}`);
   for (const c of city.churches) L.push(`- **Église ${c.name}** (${city.districts[c.district] ? city.districts[c.district].name : 'quartier'})`);
+  for (const sq of city.squares) L.push(`- **${sq.name}**, petite place avec son puits (${city.districts[sq.district] ? city.districts[sq.district].name : 'quartier'})`);
   for (const i of city.inns) L.push(`- **Auberge « ${i.name} »**, près ${i.near}`);
   L.push('');
 

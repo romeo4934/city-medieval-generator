@@ -667,6 +667,10 @@ function generateCity(opts) {
     d.labelCell = (plain.length ? plain : d.cells).reduce((m, c) => (dist(c.site, mid) < dist(m.site, mid) ? c : m));
   });
 
+  // Fossé : un anneau autour du rempart principal. En eau en plaine ou près d'une rivière, à sec sur les hauteurs.
+  const moat = { water: relief === 'plaine' || relief === 'vallee' || rivers.length > 0, width: 11 + N * 0.12 };
+  moat.outer = 3.5 + 3 + moat.width;    // demi-mur + berme + fossé : distance du rempart au bord extérieur
+
   // ================= 13. Parcellaire fin =================
   // Chaque quartier bâti est redécoupé en petites cellules. Les îlots sont des assemblages
   // irréguliers de ces cellules, séparés par les grandes routes puis par des rues et ruelles
@@ -835,7 +839,7 @@ function generateCity(opts) {
   const oldWallStanding = new Map(oldWalls.map(w => [ek(w.a, w.b), w.standing]));
   const coarseClass = (ck, from) => {
     if (wallEdges.has(ck)) return 'wall';
-    if (riverEdgeW.has(ck)) return 'river';
+    if (riverEdgeW.has(ck)) return from.inner && quays.has(ck) ? 'quai' : 'river';
     if (citadelEdges.has(ck)) return 'wall2';
     if (roadEdges.has(ck)) return 'main';
     if (oldWallStanding.has(ck)) return oldWallStanding.get(ck) ? 'oldwall' : 'boulevard'; // mur démoli → boulevard
@@ -846,6 +850,14 @@ function generateCity(opts) {
     if (other.steep) return 'back';
     return 'edge';
   };
+  // Quais : une partie des berges en ville est longée par une rue, les maisons regardent l'eau
+  const quays = new Set();
+  {
+    const rQ = rng('quais');
+    for (const key of riverEdgeW.keys()) {
+      if ((edgeCells.get(key) || []).every(ci => cells[ci].inner) && rQ() < 0.55) quays.add(key);
+    }
+  }
   const fclass = new Map();
   for (const [key, cs] of fEdgeCells) {
     const ck = fineOnCoarse.get(key);
@@ -854,7 +866,7 @@ function generateCity(opts) {
 
   // --- rues secondaires, ruelles et impasses ---
   const fArea = fcells.map(fc => Math.abs(Geo.area(fc.ids.map(id => fverts[id]))));
-  const MAX_BLOCK = { vieille: 4200, bourg: 7000, neuf: 11000, citadelle: 9000 };
+  const MAX_BLOCK = { vieille: 3000, bourg: 5000, neuf: 9000, citadelle: 8000 };
   const blocksNow = () => {
     const parent = fcells.map((_, i) => i);
     const find = i => (parent[i] === i ? i : (parent[i] = find(parent[i])));
@@ -948,9 +960,29 @@ function generateCity(opts) {
     }
   }
 
+  // Placettes : un petit îlot au croisement de rues reste ouvert (comme le Weinmarkt de Nuremberg).
+  // Les maisons voisines donnent sur la place.
+  const squares = [];
+  {
+    const rSq = rng('placettes|' + opts.size);
+    const streetCls = new Set(['main', 'rue', 'boulevard']);
+    const want = Math.max(1, Math.round(N / 9));
+    const cands = fcells.filter(fc => fc.coarse.inner && !fc.coarse.citadel && fArea[fc.index] > 250 && fArea[fc.index] < 1300
+      && fEdges(fc).filter(([a, b]) => streetCls.has(fclass.get(fek(a, b)))).length >= 2
+      && fEdges(fc).some(([a, b]) => fclass.get(fek(a, b)) === 'main'));
+    for (let k = 0; k < want && cands.length; k++) {
+      const i = Math.floor(rSq() * cands.length);
+      const fc = cands.splice(i, 1)[0];
+      if (squares.some(o => dist(o.site, fc.coarse.site) < cellR * 1.5)) { k--; continue; }
+      fc.square = true;
+      squares.push({ fc, site: fc.coarse.site });
+      for (const [a, b] of fEdges(fc)) if (fclass.get(fek(a, b)) === 'none') fclass.set(fek(a, b), 'place');
+    }
+  }
+
   // ================= 14. Dessin des parcelles et des maisons =================
   const city = {
-    name, autoName, seed: opts.seed, size: opts.size, R, E, relief, age,
+    name, autoName, seed: opts.seed, size: opts.size, R, E, relief, age, moat,
     rivers: rivers.map(rv => ({ w: rv.w, points: smooth(rv.path.map(id => verts[id]), 3) })),
     bridges,
     wall: wall.map(id => verts[id]),
@@ -972,7 +1004,7 @@ function generateCity(opts) {
     ridges: [], annexes: [], lotLines: [], fences: [], trees: [],
     terraces: [], vineyards: [], fieldStrips: [[], [], []], meadows: [],
     plaza: [], stalls: [], wells: [], specials: [], labels: [],
-    hills: hillNames.map(h => h.name), churches: [], inns: [], waterGates: [], streetLabels: [], streets: [], neighbours: [],
+    hills: hillNames.map(h => h.name), squares: [], churches: [], inns: [], waterGates: [], streetLabels: [], streets: [], neighbours: [],
     contours: [],
     gateNames: [],
     districts: districts.map(d => ({
@@ -1046,8 +1078,8 @@ function generateCity(opts) {
     city.trees.push([c[0] + Math.cos(a) * d, c[1] + Math.sin(a) * d, Math.min(ir * 0.9, between(rand, [2.5, 4.5]))]);
   };
 
-  const INSET = { main: 5, boulevard: 4.5, rue: 2.6, ruelle: 1.5, place: 2.5, wall: 7, wall2: 5, oldwall: 3, edge: 2.5, back: 1.5, none: 0 };
-  const FRONTS = new Set(['main', 'boulevard', 'rue', 'ruelle', 'place']);
+  const INSET = { main: 5, quai: 0, boulevard: 4.5, rue: 2.6, ruelle: 1.5, place: 2.5, wall: 7, wall2: 5, oldwall: 3, edge: 2.5, back: 1.5, none: 0 };
+  const FRONTS = new Set(['main', 'quai', 'boulevard', 'rue', 'ruelle', 'place']);
   const TREES = { vieille: 0.05, bourg: 0.25, neuf: 0.45, faubourg: 0.5, citadelle: 0.15 };
   const interiorGround = zone => (zone === 'vieille' || zone === 'citadelle' ? 'court' : 'garden');
 
@@ -1102,7 +1134,7 @@ function generateCity(opts) {
       const cls = classes[i];
       if (!FRONTS.has(cls) || (suburb && cls !== 'main') || L < 4) continue;
       const u = [(B[0] - A[0]) / L, (B[1] - A[1]) / L], n = [-u[1] * s, u[0] * s];
-      const rich = cls === 'main' || cls === 'place' || cls === 'boulevard';
+      const rich = cls === 'main' || cls === 'place' || cls === 'boulevard' || cls === 'quai';
       const alley = cls === 'ruelle';
       const front = rich ? [Z.front[0], Z.front[0] + 2.5] : alley ? [Z.front[0] + 2, Z.front[1] + 3] : Z.front;
       const skip = alley ? 0.45 : suburb ? 0.35 : zone === 'neuf' ? 0.08 : 0.03;
@@ -1211,7 +1243,7 @@ function generateCity(opts) {
       if (d.cells.some(c => c.building && c.building.id === 'temple')) return;
       const mid = d.labelCell.site;
       const cands = fcells.filter(fc => fc.coarse.district === k && fc.coarse.inner && !fc.coarse.citadel && !fc.suburb
-        && fArea[fc.index] > 450 && fArea[fc.index] < 3200);
+        && !fc.square && fArea[fc.index] > 450 && fArea[fc.index] < 3200);
       if (!cands.length) return;
       const fc = cands.reduce((m, f) => {
         const df = dist(Geo.centroid(f.ids.map(id => fverts[id])), mid), dm = dist(Geo.centroid(m.ids.map(id => fverts[id])), mid);
@@ -1227,7 +1259,13 @@ function generateCity(opts) {
     const poly = fc.ids.map(id => fverts[id]);
     const keys = fEdges(fc).map(([a, b]) => fek(a, b));
     const classes = keys.map(k => fclass.get(k));
-    const dists = keys.map((k, i) => (classes[i] === 'river' ? riverEdgeW.get(fineOnCoarse.get(k)) / 2 + 2.5 : INSET[classes[i]]));
+    const dists = keys.map((k, i) => {
+      const c = classes[i];
+      if (c === 'river') return riverEdgeW.get(fineOnCoarse.get(k)) / 2 + 2.5;
+      if (c === 'quai') return riverEdgeW.get(fineOnCoarse.get(k)) / 2 + 7;     // berge + rue du quai
+      if (c === 'wall' && fc.suburb) return moat.outer + 4;                      // pas de maison dans le fossé
+      return INSET[c];
+    });
     const block = Geo.inset(poly, dists);
     if (block.length < 3) {
       // Cellule trop fine pour bâtir : un bout de jardin plutôt qu'un vide
@@ -1236,6 +1274,14 @@ function generateCity(opts) {
       continue;
     }
     const rand = rng('parcelle|' + opts.size + '|' + fc.coarse.index + '|' + fc.index);
+    if (fc.square) {
+      const sq = squares.find(x => x.fc === fc);
+      const [ctr] = inradius(block);
+      sq.poly = block; sq.at = ctr;
+      city.plaza.push(block);
+      city.wells.push([ctr[0], ctr[1], 2]);
+      continue;
+    }
     if (fc.church) {
       // Église orientée vers l'est (chœur et abside à l'est, clocher à l'ouest), dans son cimetière
       city.ground.garden.push(block);
@@ -1371,7 +1417,7 @@ function generateCity(opts) {
     if (poly.length < 3) continue;
     const keys = cellEdges(c).map(([a, b]) => ek(a, b));
     const rand = rng('ilot|' + opts.size + '|' + c.index);
-    const block = Geo.inset(poly, keys.map(edgeInset));
+    const block = Geo.inset(poly, keys.map(k => (wallEdges.has(k) && !c.inner ? moat.outer + 3 : edgeInset(k))));
     if (block.length < 3) continue;
 
     if (c.type === 'plaza') {
@@ -1392,7 +1438,7 @@ function generateCity(opts) {
       (c.inner ? city.terraces : city.vineyards).push(block);   // pente : terrasses ou vignes, pas de maisons
     } else {
       // Champs en lanières (openfield), orientation propre à chaque quartier de terre
-      const field = Geo.inset(poly, keys.map(k => withRiver(k, roadEdges.has(k) ? 5.5 : 2)));
+      const field = Geo.inset(poly, keys.map(k => withRiver(k, wallEdges.has(k) ? moat.outer + 3 : roadEdges.has(k) ? 5.5 : 2)));
       if (field.length < 3) continue;
       const a = rand() * Math.PI;
       const strips = stripCut(field, [Math.cos(a), Math.sin(a)], [10, 22], rand);
@@ -1462,6 +1508,21 @@ function generateCity(opts) {
       }
       city.streets.push({ name, kind: sp.deadEnd ? 'impasse' : sp.cls, length: Math.round(L), detail: d ? d.name : '' });
       if (L > (sp.cls === 'rue' ? 45 : 32)) city.streetLabels.push({ name, points: pts, cls: sp.cls });
+    }
+
+    // Placettes : nom selon ce qui les entoure
+    for (const sq of squares) {
+      if (!sq.poly) continue;
+      const c = sq.fc.coarse;
+      const church = city.churches.find(ch => ch.district === c.district && dist(ch.at, sq.at) < cellR * 2);
+      const opts2 = [];
+      if (church) opts2.push('Place ' + church.name);
+      if (rivers.length && riverDist(sq.at) < cellR) opts2.push('Marché au Poisson', 'Place du Quai');
+      if (zoneOf(c) === 'vieille') opts2.push('Place du Pilori', 'Place de la Croix');
+      let name = null;
+      for (const o of opts2) if ((name = claim(o))) break;
+      if (!name) name = pickFrom(SQUARE_NAMES) || 'Placette';
+      city.squares.push({ name, at: sq.at, district: c.district });
     }
 
     // Auberges : sur les grandes rues, près de chaque porte et près du marché
