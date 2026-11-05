@@ -5,11 +5,8 @@
  * Dépend de geo.js. Données pures.
  */
 
-const MILL_NAMES = ['Moulin du Roi', 'Moulin des Chanoines', 'Moulin Neuf', 'Moulin de la Planche', 'Moulin Bannier', 'Moulin aux Draps'];
-const ISLAND_NAMES = ['Île aux Moines', 'Île Saint-Clair', 'Île des Tanneurs', 'Île du Pré', 'Île aux Juges', 'Île de la Cité'];
-
 function makeWaterworks(T) {
-  const { rivers, rand, domainAt, slopeAt, addBarrier, cellR, nCanals = 1, nIslands = 1 } = T;
+  const { rivers, rand, domainAt, slopeAt, addBarrier, cellR, nCanals = 1, nIslands = 1, X } = T;
   const norm = v => { const l = Math.hypot(v[0], v[1]) || 1; return [v[0] / l, v[1] / l]; };
   const resample = (pts, step) => {
     const out = [pts[0]];
@@ -43,7 +40,7 @@ function makeWaterworks(T) {
       addBarrier(pts, 4.5);
       for (const f of [0.38, 0.66]) {
         const k = Math.floor(n * f), t = tangent(i0 + k), c = pts[k];
-        mills.push({ at: c, axis: t, name: pick(MILL_NAMES, usedMill) });
+        mills.push({ at: c, axis: t, name: pick(X.mills, usedMill) });
       }
       made++;
     }
@@ -59,7 +56,7 @@ function makeWaterworks(T) {
       const water = ellipse(len / 2 + 14, wid / 2 + rv.w * 0.9), land = ellipse(len / 2, wid / 2);
       if (!water.every(p => domainAt(p) === 'town')) continue;
       if (islands.some(o => Math.hypot(o.at[0] - P[i][0], o.at[1] - P[i][1]) < o.len + len)) continue;
-      islands.push({ water, land, at: P[i], axis: t, len, wid, name: pick(ISLAND_NAMES, usedIsl) });
+      islands.push({ water, land, at: P[i], axis: t, len, wid, name: pick(X.islands, usedIsl) });
       addBarrier([...water, water[0]], 1);
       made++;
     }

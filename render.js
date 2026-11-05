@@ -243,7 +243,7 @@ function renderTerrainView(city, view) {
 
   // Titre
   const ts = E / 16;
-  out.push(`<text x="0" y="${n1(-E + ts * 1.4)}" font-size="${n1(ts)}" text-anchor="middle" fill="${COLORS.ink}" paint-order="stroke" stroke="#fff" stroke-width="${n1(ts / 5)}" stroke-linejoin="round">${esc(city.name)} — ${view === 'relief' ? 'relief' : 'pentes'}</text>`);
+  out.push(`<text x="0" y="${n1(-E + ts * 1.4)}" font-size="${n1(ts)}" text-anchor="middle" fill="${COLORS.ink}" paint-order="stroke" stroke="#fff" stroke-width="${n1(ts / 5)}" stroke-linejoin="round">${esc(city.name)} — ${view === 'relief' ? textFor(city.lang).render.relief : textFor(city.lang).render.slopes}</text>`);
 
   // Légende
   const lx = E - E * 0.36, sw = fs * 0.9;
@@ -254,13 +254,12 @@ function renderTerrainView(city, view) {
     out.push(`<rect x="${n1(lx)}" y="${n1(ly - sw * 0.5)}" width="${n1(E * 0.22)}" height="${n1(sw)}" fill="url(#cmg-alt-grad)" stroke="${COLORS.buildingLine}" stroke-width="0.6"/>`);
     out.push(`<text class="leg" x="${n1(lx)}" y="${n1(ly + sw * 1.3)}">${Math.round(T.min)} m</text>`);
     out.push(`<text class="leg" x="${n1(lx + E * 0.22)}" y="${n1(ly + sw * 1.3)}" text-anchor="end">${Math.round(T.maxAlt)} m</text>`);
-    out.push(`<text class="leg" x="${n1(lx)}" y="${n1(ly - sw * 1.1)}">Altitude${T.flat ? ' (plaine)' : ' — courbes tous les 5 m'}</text>`);
+    out.push(`<text class="leg" x="${n1(lx)}" y="${n1(ly - sw * 1.1)}">${textFor(city.lang).render.altitude}${T.flat ? textFor(city.lang).render.plain : textFor(city.lang).render.contours5}</text>`);
   } else {
-    const rows = [['rgb(233,237,220)', 'moins de 8 % : facile'], ['rgb(243,227,161)', `8–${T.easy} % : on bâtit`], ['rgb(240,179,107)', `${T.easy}–${T.max} % : terrasses, peu de maisons`],
-      ['rgb(217,105,79)', `${T.max}–45 % : trop raide, vignes`], ['rgb(168,71,58)', 'plus de 45 % : rocher']];
+    const rows = ['rgb(233,237,220)', 'rgb(243,227,161)', 'rgb(240,179,107)', 'rgb(217,105,79)', 'rgb(168,71,58)'].map((c, i) => [c, textFor(city.lang).render.slopeRows(T)[i]]);
     const ly = E - E * 0.06 - rows.length * sw * 1.5;
     out.push(`<rect x="${n1(lx - sw * 0.6)}" y="${n1(ly - sw * 2.2)}" width="${n1(E * 0.35)}" height="${n1(sw * (rows.length * 1.5 + 2.6))}" rx="4" fill="#fff" fill-opacity=".85"/>`);
-    out.push(`<text class="leg" x="${n1(lx)}" y="${n1(ly - sw * 1.1)}">Pente (maisons en noir)</text>`);
+    out.push(`<text class="leg" x="${n1(lx)}" y="${n1(ly - sw * 1.1)}">${textFor(city.lang).render.slopeTitle}</text>`);
     rows.forEach(([c, t], i) => {
       const y = ly + i * sw * 1.5 + sw * 0.4;
       out.push(`<rect x="${n1(lx)}" y="${n1(y - sw / 2)}" width="${n1(sw)}" height="${n1(sw)}" fill="${c}" stroke="${COLORS.buildingLine}" stroke-width="0.6"/>`);
@@ -646,7 +645,7 @@ function renderSVG(city, options = {}) {
   // Légende des toits
   const lx = E - E * 0.3, ly = E - E * 0.17, sw = fs * 0.9;
   out.push(`<rect x="${n1(lx - sw * 0.6)}" y="${n1(ly - sw * 2.6)}" width="${n1(E * 0.27)}" height="${n1(sw * 6.7)}" rx="4" fill="${COLORS.land}" fill-opacity=".85"/>`);
-  [['tile', 'Tuile (colombages)'], ['slate', 'Ardoise (pierre)'], ['thatch', 'Chaume'], ['inn', 'Auberge']].forEach(([k, t], i) => {
+  ['tile', 'slate', 'thatch', 'inn'].map((k, i) => [k, textFor(city.lang).render.roofs[i]]).forEach(([k, t], i) => {
     const y = ly - sw * 1.5 + i * sw * 1.5;
     out.push(`<rect x="${n1(lx)}" y="${n1(y - sw / 2)}" width="${n1(sw)}" height="${n1(sw)}" fill="${COLORS[k]}" stroke="${COLORS.buildingLine}" stroke-width="0.6"/>`);
     out.push(`<text class="leg" x="${n1(lx + sw * 1.5)}" y="${n1(y)}">${t}</text>`);

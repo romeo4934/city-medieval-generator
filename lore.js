@@ -37,12 +37,15 @@ const ZONE_TEXT = {
   citadelle: 'dans la citadelle',
 };
 
-function citySheet(city) {
+// The sheet in the city's language / la fiche dans la langue de la ville (anglais : lore-en.js)
+function citySheet(city) { return city.lang === 'fr' ? citySheetFr(city) : citySheetEn(city); }
+
+function citySheetFr(city) {
   const rand = mulberry32(seedHash(city.seed + '|fiche'));
   const pick = list => list[Math.floor(rand() * list.length)];
   const s = city.stats;
   const L = [];
-  const sizeText = { petite: 'Petite ville', moyenne: 'Ville moyenne', grande: 'Grande ville', capitale: 'Capitale' }[city.size] || 'Ville';
+  const sizeText = { petite: 'Petite ville', moyenne: 'Ville moyenne', grande: 'Grande ville', capitale: 'Capitale', metropole: 'Grande cité' }[city.size] || 'Ville';
   const riverNames = city.rivers.map((_, i) => RIVER_NAMES[(seedHash(city.seed + '|riviere|' + i)) % RIVER_NAMES.length]);
 
   L.push(`# ${city.name}`, '');

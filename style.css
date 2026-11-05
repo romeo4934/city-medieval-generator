@@ -187,3 +187,6 @@ main {
 .counts { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 10px; }
 .counts label { margin: 0; font-size: 12px; }
 .counts input { padding: 4px 6px; }
+.top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
+.top h1 { margin: 0; }
+#lang { padding: 3px 9px; font-size: 12px; letter-spacing: .05em; }

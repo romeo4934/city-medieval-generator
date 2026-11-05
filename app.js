@@ -1,5 +1,5 @@
 'use strict';
-/* Interface : réglages ↔ adresse de la page, génération, zoom, enregistrement, export. */
+/* Interface: settings ↔ page address, generation, zoom, save, export. English by default, French on request. */
 
 const $ = id => document.getElementById(id);
 let current = null;   // ville générée
@@ -11,14 +11,51 @@ function randomSeed() {
   return Math.random().toString(36).slice(2, 8);
 }
 
-// Cases à cocher des bâtiments, construites depuis le catalogue
-$('buildings').innerHTML = BUILDINGS.map(b =>
-  `<label class="check"><input type="checkbox" value="${b.id}"> ${b.label}</label>`).join('');
+// ---------- language / langue ----------
+// The page is written in English; each translatable element carries its French text in data-fr
+const savedLang = (() => { try { return localStorage.getItem('lang'); } catch (e) { return null; } })();
+let lang = new URLSearchParams(location.hash.slice(1)).get('lang') || savedLang || 'en';
+const UI = {
+  en: { population: 'Population', people: 'people', houses: 'Houses', stone: 'stone', timber: 'timber', thatch: 'thatch', diameter: 'Diameter', gates: 'Gates',
+    rivers: 'Rivers', none: 'none', relief: 'Terrain', plan: 'Layout', walls: 'Walls', notPlaced: 'Not placed', noRoom: 'Not enough room', oldWalls: ' (the old ones are partly pulled down)',
+    reliefs: c => ({ plaine: 'plain', colline: 'one hill' + (c.citadel ? ', citadel on top' : ''), collines: 'several hills' + (c.citadel ? ', acropolis on the highest' : ''), vallee: 'valley' }),
+    plans: c => (c.plan === 'bastide' ? 'bastide (grid)' : 'organic') + (c.twin ? ', upper + lower town' : ''), badFile: 'This file is not a city saved by this generator.', locale: 'en-GB' },
+  fr: { population: 'Population', people: 'habitants', houses: 'Maisons', stone: 'pierre', timber: 'colombages', thatch: 'chaume', diameter: 'Diamètre', gates: 'Portes',
+    rivers: 'Rivières', none: 'aucune', relief: 'Relief', plan: 'Plan', walls: 'Enceintes', notPlaced: 'Non placé', noRoom: 'Pas assez de place', oldWalls: ' (les anciennes sont en partie démolies)',
+    reliefs: c => ({ plaine: 'plaine', colline: 'colline' + (c.citadel ? ', citadelle au sommet' : ''), collines: 'plusieurs collines' + (c.citadel ? ', acropole sur la plus haute' : ''), vallee: 'vallée' }),
+    plans: c => (c.plan === 'bastide' ? 'bastide (damier)' : 'organique') + (c.twin ? ', ville haute + ville basse' : ''), badFile: "Ce fichier n'est pas une ville enregistrée par ce générateur.", locale: 'fr-FR' },
+};
+const ui = () => UI[lang === 'fr' ? 'fr' : 'en'];
+
+function applyLang() {
+  document.documentElement.lang = lang;
+  document.title = lang === 'fr' ? 'Générateur de villes médiévales' : 'Medieval City Generator';
+  document.querySelectorAll('[data-fr]').forEach(el => {
+    if (el.dataset.en === undefined) el.dataset.en = el.textContent;
+    el.textContent = lang === 'fr' ? el.dataset.fr : el.dataset.en;
+  });
+  document.querySelectorAll('[data-fr-title]').forEach(el => {
+    if (el.dataset.enTitle === undefined) el.dataset.enTitle = el.title;
+    el.title = lang === 'fr' ? el.dataset.frTitle : el.dataset.enTitle;
+  });
+  $('lang').textContent = lang === 'fr' ? 'EN' : 'FR';
+  // Landmark check boxes, from the catalogue, keeping what is ticked
+  const ticked = new Set([...document.querySelectorAll('#buildings input:checked')].map(i => i.value));
+  $('buildings').innerHTML = BUILDINGS.map(b =>
+    `<label class="check"><input type="checkbox" value="${b.id}"${ticked.has(b.id) ? ' checked' : ''}> ${textFor(lang).buildings[b.id] || b.label}</label>`).join('');
+}
+applyLang();
+$('lang').onclick = () => {
+  lang = lang === 'fr' ? 'en' : 'fr';
+  try { localStorage.setItem('lang', lang); } catch (e) { /* private mode */ }
+  applyLang();
+  build({ ...opts });
+};
 
 // ---------- réglages ----------
 
 // Quantités : [option, paramètre d'adresse, min, max] ; vide = au hasard
-const COUNTS = [['nHills', 'n_collines', 0, 5], ['nRivers', 'n_rivieres', 0, 3], ['nGates', 'n_portes', 2, 8], ['nRings', 'n_enceintes', 1, 3], ['nDistricts', 'n_quartiers', 2, 12], ['nLedges', 'n_ressauts', 0, 3], ['nSquares', 'n_placettes', 0, 8], ['nChurches', 'n_eglises', 0, 12], ['nInns', 'n_auberges', 0, 10], ['nIslands', 'n_iles', 0, 3], ['nCanals', 'n_biefs', 0, 3], ['forest', 'foret', 0, 100]];
+const COUNTS = [['nHills', 'n_collines', 0, 10], ['nRivers', 'n_rivieres', 0, 3], ['nGates', 'n_portes', 2, 8], ['nRings', 'n_enceintes', 1, 3], ['nDistricts', 'n_quartiers', 2, 12], ['nLedges', 'n_ressauts', 0, 3], ['nSquares', 'n_placettes', 0, 8], ['nChurches', 'n_eglises', 0, 12], ['nInns', 'n_auberges', 0, 10], ['nIslands', 'n_iles', 0, 3], ['nCanals', 'n_biefs', 0, 3], ['forest', 'foret', 0, 100]];
 const toCount = (v, lo, hi) => (v === null || v === undefined || v === '' || isNaN(+v) ? null : Math.max(lo, Math.min(hi, Math.round(+v))));
 
 function normalize(o) {
@@ -38,6 +75,7 @@ function normalize(o) {
     buildings: Array.isArray(o.buildings) ? o.buildings.filter(id => BUILDINGS.some(b => b.id === id)) : DEFAULT_BUILDINGS.slice(),
     names: Array.isArray(o.names) ? o.names.map(n => String(n || '')) : [],
     cityName: String(o.cityName || ''),
+    lang: lang === 'fr' ? 'fr' : 'en',
   };
 }
 
@@ -73,6 +111,7 @@ function writeHash(o) {
   if (o.cityName) p.set('nom', o.cityName);
   for (const [k, h] of COUNTS) if (o[k] !== null && o[k] !== undefined) p.set(h, o[k]);
   if (mapView !== 'plan') p.set('vue', mapView);
+  p.set('lang', lang);
   if (o.names.some(Boolean)) p.set('noms', o.names.join('|'));
   history.replaceState(null, '', '#' + p);
 }
@@ -148,21 +187,21 @@ function show(city) {
   if (!view || previousE !== current.E) resetView();
   applyView();
 
-  const s = current.stats;
+  const s = current.stats, U = ui(), sep = lang === 'fr' ? ' : ' : ': ', num = v => v.toLocaleString(U.locale);
   $('info').innerHTML = `
     <h2>${escAttr(current.name)}</h2>
     <dl>
-      <dt>Population</dt><dd>≈ ${s.population.toLocaleString('fr-FR')} habitants</dd>
-      <dt>Maisons</dt><dd>${s.houses.toLocaleString('fr-FR')} (pierre ${s.stone}, colombages ${s.timber}, chaume ${s.thatch})</dd>
-      <dt>Diamètre</dt><dd>≈ ${s.diameter} m</dd>
-      <dt>Portes</dt><dd>${current.gateNames.map(g => g.text).join(', ')}</dd>
-      <dt>Rivières</dt><dd>${s.rivers || 'aucune'}</dd>
-      <dt>Relief</dt><dd>${{ plaine: 'plaine', colline: 'colline' + (current.citadel ? ', citadelle au sommet' : ''), collines: 'plusieurs collines' + (current.citadel ? ', acropole sur la plus haute' : ''), vallee: 'vallée' }[s.relief]}</dd>
-      <dt>Plan</dt><dd>${current.plan === 'bastide' ? 'bastide (damier)' : 'organique'}${current.twin ? ', ville haute + ville basse' : ''}</dd>
-      <dt>Enceintes</dt><dd>${s.age}${s.age > 1 ? ' (les anciennes sont en partie démolies)' : ''}</dd>
+      <dt>${U.population}</dt><dd>≈ ${num(s.population)} ${U.people}</dd>
+      <dt>${U.houses}</dt><dd>${num(s.houses)} (${U.stone} ${s.stone}, ${U.timber} ${s.timber}, ${U.thatch} ${s.thatch})</dd>
+      <dt>${U.diameter}</dt><dd>≈ ${s.diameter} m</dd>
+      <dt>${U.gates}</dt><dd>${escAttr(current.gateNames.map(g => g.text).join(', '))}</dd>
+      <dt>${U.rivers}</dt><dd>${s.rivers || U.none}</dd>
+      <dt>${U.relief}</dt><dd>${U.reliefs(current)[s.relief]}</dd>
+      <dt>${U.plan}</dt><dd>${U.plans(current)}</dd>
+      <dt>${U.walls}</dt><dd>${s.age}${s.age > 1 ? U.oldWalls : ''}</dd>
     </dl>
-    ${s.missing.length ? `<p class="warn">Non placé : ${s.missing.join(', ')}</p>` : ''}
-    ${s.shortfalls && s.shortfalls.length ? `<p class="warn">Pas assez de place : ${s.shortfalls.join(' ; ')}</p>` : ''}`;
+    ${s.missing.length ? `<p class="warn">${U.notPlaced}${sep}${escAttr(s.missing.join(', '))}</p>` : ''}
+    ${s.shortfalls && s.shortfalls.length ? `<p class="warn">${U.noRoom}${sep}${escAttr(s.shortfalls.join('; '))}</p>` : ''}`;
 
   $('sheet').innerHTML = sheetToHtml(citySheet(current));
   $('districts').innerHTML = current.districts.map((d, k) => `
@@ -309,7 +348,7 @@ $('file').onchange = async () => {
     view = null;
     build(data.options);
   } catch {
-    alert("Ce fichier n'est pas une ville enregistrée par ce générateur.");
+    alert(ui().badFile);
   }
 };
 
@@ -342,6 +381,10 @@ $('relief').onchange = $('plan').onchange = $('walls').onchange = $('twin').onch
 for (const [k] of COUNTS) $(k).onchange = () => build(fromControls());
 $('buildings').addEventListener('change', () => build(fromControls()));
 
-window.addEventListener('hashchange', () => build(readHash()));
+window.addEventListener('hashchange', () => {
+  const l = new URLSearchParams(location.hash.slice(1)).get('lang');
+  if (l && l !== lang) { lang = l; applyLang(); }
+  build(readHash());
+});
 
 build(readHash());

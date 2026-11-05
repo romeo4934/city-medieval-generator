@@ -1,102 +1,98 @@
-# Générateur de villes médiévales
+# Medieval City Generator
 
-Génère des plans de villes médiévales propres, lisibles et **cohérents**, pour écrire de la fantasy. Chaque élément de la carte a une raison d'être où il est.
+Generates clean, readable and **coherent** medieval city maps for writing fantasy. Every element on the map has a reason to be where it is.
 
-**En ligne : https://romeo4934.github.io/city-medieval-generator/**
+**Online: https://romeo4934.github.io/city-medieval-generator/**
 
-**Aucune installation.** Ouvre `index.html` dans un navigateur : pas de dépendance, pas de compilation. Ou utilise directement la version en ligne ci-dessus.
+**Nothing to install.** Open `index.html` in a browser: no dependencies, no build step. Or just use the online version above.
 
-## Le modèle
+The interface, every generated name and the city sheet come in **English** (default) or **French**: use the FR / EN button at the top of the panel.
 
-**Le terrain est mesuré.** L'altitude est en mètres et la pente en pourcentage, vérifiée pour chaque parcelle : on bâtit normalement jusqu'à 15 %, en terrasses et clairsemé jusqu'à 25 %, jamais au-delà. Une colline peut monter par **esplanades** : des paliers plats séparés par des ressauts de 10 à 25 m (falaise ou mur de soutènement), qu'aucune maison ne chevauche, franchis par des **escaliers** nommés. En pente, les rues suivent les courbes de niveau.
+## The model
 
-**Trois vues**, avec les boutons en haut de la carte :
-- **Plan** : la carte de la ville, avec l'ombrage du relief, les courbes de niveau tous les 10 m et les ressauts ;
-- **Relief** : les couleurs d'altitude, l'ombrage, les courbes tous les 5 m cotées en mètres et les sommets cotés, avec la ville en surimpression ;
-- **Pentes** : la carte des pentes par classe (facile, constructible, terrasses, trop raide, rocher), avec les maisons en noir pour vérifier où l'on a bâti.
+**The terrain is measured.** Elevation is in metres and slope in percent, checked for every plot: people build normally up to 15 %, sparsely and on terraces up to 25 %, never beyond. A hill can rise in **terraces**: flat levels separated by 10–25 m cliffs or retaining walls, which no house straddles, crossed by named **stairs**. On slopes, streets follow the contour lines.
 
-**Le relief décide de tout.** Une carte d'altitude (plaine, colline, plusieurs collines comme Athènes ou Rome, ou vallée) détermine :
-- où coulent les **rivières**, qui suivent les creux et ne remontent jamais une colline ;
-- la **forme de la colline**, tirée de sites réels : butte isolée (Vézelay), crête allongée (Nuremberg, Édimbourg), éperon avancé d'un plateau (Provins, Laon), table aux flancs abrupts (Orvieto), colline dissymétrique (douce d'un côté, falaise de l'autre) ; chaque colline a sa hauteur (25 à 120 m), son orientation, son allongement et un contour irrégulier ;
-- où l'on **ne construit pas** : les pentes raides deviennent des vignes ou des jardins en terrasses ;
-- où se dresse la **citadelle** : sur le plateau du sommet, avec sa propre enceinte et une route qui y monte ;
-- avec plusieurs collines, la plus haute porte l'acropole ; les autres, plus basses, gardent leurs pentes en vignes et portent un petit sanctuaire avec leur nom (Mont des Corbeaux, Butte aux Moulins…), et la ville se glisse dans les vallons ;
-- par où passent les **routes**, qui contournent les pentes ;
-- la **forme de la vallée** : large, gorge étroite (la ville ne s'étend qu'en longueur), confluence de deux rivières, ou méandre où la rivière fait presque le tour de la ville, comme le Doubs à Besançon.
+**Three views**, with the buttons above the map:
+- **Map**: the city plan, with hill shading, contours every 10 m and cliffs;
+- **Relief**: elevation colours, shading, contours every 5 m labelled in metres and spot heights, with the city on top;
+- **Slopes**: slope classes (easy, buildable, terraces, too steep, rock), with houses in black to check where people built.
 
-**La ville a une histoire.** Elle naît autour du marché, sur un terrain plat, près d'un gué s'il y a une rivière, puis s'étend en évitant pentes et cours d'eau. L'**âge de la ville** (1, 2 ou 3 enceintes) décide de combien de fois elle a débordé de ses murs. Chaque enceinte suit le tracé le plus court à défendre (elle englobe pentes et collines au lieu de les contourner). Les anciennes enceintes restent à l'intérieur en anneaux, debout ou démolies par longs tronçons ; les parties tombées sont devenues des boulevards, et les rues ont percé des brèches dans le reste. Là où la rivière entre dans la ville, une porte d'eau avec sa herse. Comme à Nuremberg ou à Bruges, un **fossé** (en eau en plaine, à sec sur les hauteurs) fait le tour du rempart, franchi par un pont devant chaque porte, et des **tours en saillie** se succèdent tous les 38 m environ, comme à Carcassonne.
+**The terrain decides everything.** An elevation map (plain, one hill, several hills — up to 10, like Rome or Lisbon — or a valley) determines:
+- where **rivers** flow: they follow the low ground and never climb a hill;
+- the **shape of the hill**, taken from real sites: lone knoll (Vézelay), long ridge (Nuremberg, Edinburgh), spur of a plateau (Provins, Laon), mesa with sheer sides (Orvieto), lopsided hill (gentle on one side, a cliff on the other); each hill has its own height (25–120 m), orientation, length and irregular outline;
+- where nobody **builds**: steep slopes become vineyards or terraced gardens;
+- where the **citadel** stands: on the summit, with its own wall and a road climbing to it;
+- with several hills, the highest carries the acropolis; the others keep their slopes in vines and carry a small shrine with their name (Ravens Hill, Mill Mount…), and the town slips into the hollows between them;
+- where **roads** go: they go round the slopes;
+- the **shape of the valley**: wide, narrow gorge (the town only grows lengthwise), two rivers meeting, or a river loop almost circling the town, like the Doubs at Besançon.
 
-**Trois formes de ville tirées de cas réels**, au choix dans le panneau :
-- **Bastide** (plan en damier), comme la ville basse de Carcassonne : îlots rectangulaires égaux, rues au cordeau, place centrale bordée de couverts (arcades) avec sa halle, Grand-Rue sur l'axe. Une bastide est fondée d'un coup : une seule enceinte.
-- **Double enceinte**, comme la Cité de Carcassonne : un mur extérieur plus bas précède le rempart, les lices s'étendent entre les deux, et une barbacane protège chaque porte.
-- **Ville haute et ville basse**, comme Provins : la ville haute, ancienne et dense, occupe le plateau dans sa propre enceinte avec le château et une collégiale ; la ville basse marchande s'étend au pied de la colline, dans la sienne ; une montée relie les deux.
+**The city has a history.** It is born around the market, on flat ground, near a ford if there is a river, then spreads avoiding slopes and water. The **number of walls** (1, 2 or 3) says how many times it outgrew its walls. Each wall takes the shortest line to defend. Old walls stay inside as rings, standing or pulled down in long stretches; the fallen parts became boulevards, and streets cut breaches through the rest. Where the river enters the town, a water gate with its portcullis. As at Nuremberg or Bruges, a **ditch** (wet on the plain, dry on high ground) runs round the wall, crossed by a bridge at each gate, and **towers** project every 38 m or so, as at Carcassonne.
 
-**Les rues d'abord, comme dans une vraie ville.** Les chemins existaient avant les maisons :
-1. **Les grandes rues** sont les chemins les moins pénibles sur le terrain, des portes au marché et vers les villes voisines. Elles contournent les pentes, montent en lacets, se rejoignent en Y et ne franchissent l'eau que par des ponts.
-2. **Les rues secondaires poussent** depuis les grandes rues, à peu près perpendiculaires et en suivant les courbes de niveau dans les pentes. Elles s'arrêtent sur une autre rue, un mur, l'eau, une falaise ou une pente trop forte, ce qui donne naturellement des impasses. Les vieux murs démolis deviennent des boulevards et une partie des berges des quais. Dans une bastide, ce sont les lignes du damier.
-3. **Les parcelles sont découpées le long des rues** : façade étroite, maison devant, cour ou jardin jusqu'au milieu de l'îlot, parfois un arrière-corps ou une dépendance. Les îlots sont simplement ce qui reste entre les rues : ils ont donc des formes variées. Dehors, les champs sont en lanières (openfield).
+**Three city forms taken from real cases**, chosen in the panel:
+- **Bastide** (grid plan), like the lower town of Carcassonne: equal rectangular blocks, straight streets, a central square lined with arcades around its market hall, the High Street on the axis. A bastide is founded at once: a single wall.
+- **Double wall**, like the Cité of Carcassonne: a lower outer wall in front of the rampart, the lists between them, and a barbican guarding each gate.
+- **Upper and lower town**, like Provins: the upper town, old and dense, holds the plateau inside its own wall with the castle and a collegiate church; the merchant lower town spreads at the foot of the hill inside another; a climbing road links the two.
 
-**L'eau est aménagée.** Un bief dérivé de la rivière fait tourner des moulins, une île s'élargit au milieu du courant avec ses maisons, et certains ponts de la ville sont habités, comme le pont au Change. Le fossé n'est en eau que sur les tronçons bas du rempart, à sec sur les hauteurs.
+**Streets first, as in a real town.** The paths existed before the houses:
+1. **Main streets** are the least tiring ways across the terrain, from the gates to the market and on to neighbouring towns. They go round slopes, climb in zigzags, meet in Y-junctions and cross water only by bridges.
+2. **Side streets grow** from the main streets, roughly at right angles, following contours on slopes. They stop at another street, a wall, water, a cliff or a slope that is too steep, which naturally gives dead ends. Any buildable ground left empty inside the walls gets a street of its own. Demolished old walls become boulevards, and part of the riverbanks become quays. In a bastide, these are the lines of the grid.
+3. **Plots are cut along the streets**: narrow frontage, house in front, yard or garden back to the middle of the block, sometimes a back wing or an outbuilding. Blocks are simply what is left between the streets, so their shapes vary. Outside, fields are cut into long strips (open fields).
 
-**La campagne vit.** Les champs sont des quartiers de lanières qui partent des routes (openfield), les pentes proches de la ville sont plantées de vigne en terrasses le long des courbes de niveau, et les forêts occupent ce qui reste loin des routes. Hors les murs, on trouve une église de faubourg, une maladrerie à l'écart, des tanneries en aval au bord de l'eau, des moulins sur la rivière et le gibet sur une hauteur.
+**Water is put to work.** A mill race taken off the river drives mills, an island widens in the middle of the stream with its houses, and some town bridges carry houses, like the Pont au Change.
 
-**Les maisons dépendent du quartier.**
-- **Parcelles en lanières** : façade étroite sur rue, maison devant, cour ou jardin derrière, parfois une dépendance au fond.
-- **Vieille ville** : parcelles serrées et profondes, beaucoup de pierre, arrière-corps sur cour : c'est le quartier le plus peuplé.
-- **Bourg-Neuf** : parcelles plus larges, colombages, jardins.
-- **Faubourgs** : maisons seulement le long des routes, en chaume.
-- **Grandes rues** : les façades y sont plus riches.
-- **Toits** : leur couleur indique le matériau (légende sur la carte), et un trait marque le faîtage, sur pignon quand la façade est étroite.
+**The countryside is alive.** Fields are strips running off the roads, slopes near the town are planted with terraced vines along the contours, and forests fill what is left far from the roads. Outside the walls: a suburb church, a leper house set apart, tanneries downstream by the water, mills on the river and the gallows on a height.
 
-**Chaque bâtiment important a une raison d'être où il est.**
-- La cathédrale est dans la vieille ville, orientée vers l'est.
-- Le château est au sommet, ou sur les remparts près de l'eau.
-- La caserne est près d'une porte.
-- Le port est sur la rive en aval, le moulin sur la rivière (à vent sinon).
-- Le cimetière et le monastère sont hors les murs.
-- S'il n'y a pas de place logique, le bâtiment n'est pas placé et l'outil dit pourquoi.
+**Houses depend on the quarter.**
+- **Old town**: tight deep plots, much stone, back wings on yards: the most crowded quarter.
+- **Newtown**: wider plots, timber framing, gardens.
+- **Suburbs**: houses only along the roads, thatched.
+- **Main streets**: richer fronts.
+- **Roofs**: their colour shows the material (legend on the map), and a line marks the ridge, gable-end on when the front is narrow.
 
-**De petites places** s'ouvrent aux croisements (comme le Weinmarkt de Nuremberg), avec leur puits. En ville, une partie des berges est bordée de **quais** où les maisons regardent l'eau (comme le Dijver à Bruges).
+**Every landmark has a reason to be where it is.** The cathedral is in the old town, facing east. The castle is on the summit, or on the walls near the water. The barracks are near a gate. The port is on the bank downstream, the mill on the river (a windmill otherwise). The cemetery and the monastery are outside the walls. If there is no logical place, the landmark is not placed and the tool says why.
 
-**Chaque quartier a son église paroissiale** (Saint-Brice, Sainte-Foy…) dans son petit cimetière, et des **auberges** nommées attendent les voyageurs près des portes et du marché.
+**Small squares** open at crossroads (like the Weinmarkt in Nuremberg), with their well. **Every quarter has its parish church** (St Brice, St Faith…) in its little churchyard, and named **inns** wait for travellers near the gates and the market.
 
-**Les quartiers sont nommés selon ce qu'ils sont.** Vieille Ville, Quartier des Tanneurs (en aval, à cause de l'odeur), Meuniers, Les Quais, Sous-le-Château, Bourg-Neuf, Quartier de la Porte du Nord… Tu peux les renommer.
+**Quarters are named after what they are**: Old Town, Tanners' Quarter (downstream, because of the smell), Millers' Quarter, The Quays, Castle Foot, Newtown, North Gate Quarter… You can rename them.
 
-**Les rues ont un nom, écrit le long de leur tracé** : la Grand-Rue et les rues des portes vers le marché, la Montée du Château, des rues nommées d'après leur quartier, leur église ou le relief (Rue des Tanneurs, Rue Saint-Aubin, Rue Haute, Rue du Quai…), des ruelles et des impasses. Les routes mènent aux villes voisines. Les étiquettes sont placées sans se chevaucher.
+**Streets have names written along them**: the High Street and the gate streets leading to the market, Castle Hill, streets named after their quarter, church or the terrain (Tanners' Street, St Aubin Street, Upper Street…), alleys and dead ends. Roads lead to neighbouring towns.
 
-**La fiche de ville**, dans le panneau et exportable en Markdown, raconte ce que le plan montre : le site, l'histoire lisible dans les enceintes, les portes et leurs routes, chaque quartier et son atmosphère, les lieux notables, toutes les rues, et quelques accroches pour une scène.
+**The city sheet**, in the panel and exportable as Markdown, tells what the map shows: the site, the history read in the walls, the gates and their roads, each quarter and its atmosphere, notable places, every street, and a few story hooks.
 
-## Utilisation
+## Use
 
-- **Combien ?** : tape le nombre voulu de collines (0 à 5), rivières (0 à 3), portes, enceintes, quartiers, ressauts par colline, placettes, églises, auberges, îles, biefs à moulins, et la part de forêt en %. Une case vide = au hasard. S'il n'y a pas la place (une île sur une rivière trop courte en ville…), l'outil le dit.
-- **Graine** : même graine + mêmes réglages = même ville. Ajouter une rivière ou un bâtiment ne déplace pas le reste.
-- **Zoom** : molette, double-clic (Maj + double-clic pour dézoomer), boutons + / − / ⤢, glisser pour se déplacer.
-- **Enregistrer / Charger** : un petit fichier `.json` avec tous les réglages et les noms.
-- **Exporter** : SVG (vectoriel, pour l'impression) ou PNG 3000 × 3000.
-- L'adresse de la page contient tous les réglages : on peut la mettre en favori.
+- **Size**: from small town (~2,000 people) to great city (~50,000).
+- **Hills**: number of hills (0–10), cliff steps per hill (0–3, the terraces), shape of the main hill and of the valley.
+- **How many?**: rivers (0–3), gates, walls, quarters, small squares, churches, inns, islands, mill races, and forest in %. Empty = random. If there is no room (an island on a river too short inside the town…), the tool says so.
+- **Seed**: same seed + same settings = same city. Adding a river or a landmark does not move everything else.
+- **Zoom**: mouse wheel, double-click (Shift + double-click to zoom out), + / − / ⤢ buttons, drag to move.
+- **Save / Load**: a small `.json` file with all settings and names.
+- **Export**: SVG (vector, for print) or PNG 3000 × 3000.
+- The page address holds every setting: you can bookmark it.
 
-Échelle : 1 unité = 1 mètre.
+Scale: 1 unit = 1 metre.
 
-## Fichiers
+## Files
 
-| Fichier | Rôle |
+| File | Role |
 |---|---|
-| `index.html` | la page |
-| `style.css` | la mise en page |
-| `geo.js` | outils : hasard reproductible, géométrie, Voronoi, plus courts chemins |
-| `catalog.js` | tailles, bâtiments, types de maisons, listes de noms |
-| `generator.js` | le modèle : relief, rivières, croissance, enceintes, réseau de rues (A* sur le terrain puis croissance), parcelles (données pures) |
-| `land.js` | la campagne : champs en lanières le long des routes, forêts |
-| `water.js` | l'eau aménagée : biefs et moulins, îles |
-| `outskirts.js` | hors les murs : église de faubourg, maladrerie, tanneries, moulins, gibet |
-| `monuments.js` | le dessin des bâtiments importants dans leur enclos |
-| `names.js` | les noms et les croisements : rues, routes, ponts, escaliers, portes, auberges |
-| `worker.js` | le calcul en arrière-plan (la page reste fluide pendant la génération) |
-| `lore.js` | la fiche de ville |
-| `render.js` | le dessin en SVG, placement des étiquettes |
-| `app.js` | l'interface : réglages, zoom, enregistrement, export |
-| `test.js` | les tests, en parallèle sur tous les cœurs : `node test.js` (ou `node test.js 200`) |
+| `index.html` | the page |
+| `style.css` | the layout |
+| `i18n.js` | every name and label, in English and French |
+| `geo.js` | tools: reproducible randomness, geometry, Voronoi, shortest paths |
+| `catalog.js` | sizes, landmarks, house types |
+| `generator.js` | the model: terrain, rivers, growth, walls, street network (A* on the terrain, then growth), plots (pure data) |
+| `land.js` | the countryside: strip fields along the roads, forests |
+| `water.js` | water works: mill races and mills, islands |
+| `outskirts.js` | outside the walls: suburb church, leper house, tanneries, mills, gallows |
+| `monuments.js` | drawing landmarks in their precincts |
+| `names.js` | names and crossings: streets, roads, bridges, stairs, gates, inns |
+| `worker.js` | background computation (the page stays responsive while generating) |
+| `lore.js`, `lore-en.js` | the city sheet, in French and English |
+| `render.js` | SVG drawing, label placement |
+| `app.js` | the interface: settings, language, zoom, save, export |
+| `test.js` | tests, in parallel on every core: `node test.js` (or `node test.js 200`) |
 
-## Mise en ligne (GitHub Pages)
+## Publishing (GitHub Pages)
 
 Settings → Pages → *Deploy from a branch* → `main` / `(root)`.

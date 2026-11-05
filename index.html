@@ -1,169 +1,178 @@
 <!doctype html>
-<html lang="fr">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Générateur de villes médiévales</title>
-  <link rel="stylesheet" href="style.css?v=20261105a">
+  <title>Medieval City Generator</title>
+  <link rel="stylesheet" href="style.css?v=20261105b">
   <link rel="icon" href="data:,">
 </head>
 <body>
   <aside>
-    <h1>Villes médiévales</h1>
+    <div class="top">
+      <h1 data-fr="Villes médiévales">Medieval cities</h1>
+      <button id="lang" title="Français / English">FR</button>
+    </div>
 
-    <label>Nom de la ville
+    <label><span data-fr="Nom de la ville">City name</span>
       <input id="cityName" type="text" spellcheck="false">
     </label>
 
-    <label>Graine
+    <label><span data-fr="Graine">Seed</span>
       <input id="seed" type="text" spellcheck="false">
     </label>
 
     <div class="row">
-      <label>Taille
+      <label><span data-fr="Taille">Size</span>
         <select id="size">
-          <option value="petite">Petite</option>
-          <option value="moyenne" selected>Moyenne</option>
-          <option value="grande">Grande</option>
-          <option value="capitale">Capitale</option>
+          <option value="petite" data-fr="Petite">Small town</option>
+          <option value="moyenne" data-fr="Moyenne" selected>Market town</option>
+          <option value="grande" data-fr="Grande">Large town</option>
+          <option value="capitale" data-fr="Capitale">Capital</option>
+          <option value="metropole" data-fr="Grande cité">Great city</option>
         </select>
       </label>
-      <label>Relief
+      <label><span data-fr="Relief">Terrain</span>
         <select id="relief">
-          <option value="auto" selected>Au hasard</option>
-          <option value="plaine">Plaine</option>
-          <option value="colline">Colline</option>
-          <option value="collines">Plusieurs collines</option>
-          <option value="vallee">Vallée</option>
+          <option value="auto" data-fr="Au hasard" selected>Random</option>
+          <option value="plaine" data-fr="Plaine">Plain</option>
+          <option value="colline" data-fr="Colline">One hill</option>
+          <option value="collines" data-fr="Plusieurs collines">Several hills</option>
+          <option value="vallee" data-fr="Vallée">Valley</option>
         </select>
       </label>
     </div>
 
     <details open>
-      <summary>Combien ? <span class="muted">(vide = au hasard)</span></summary>
+      <summary><span data-fr="Collines">Hills</span> <span class="muted" data-fr="(vide = au hasard)">(empty = random)</span></summary>
       <div class="counts">
-        <label>Collines<input type="number" id="nHills" min="0" max="5" placeholder="auto"></label>
-        <label>Rivières<input type="number" id="nRivers" min="0" max="3" placeholder="auto"></label>
-        <label>Portes<input type="number" id="nGates" min="2" max="8" placeholder="auto"></label>
-        <label>Enceintes<input type="number" id="nRings" min="1" max="3" placeholder="auto"></label>
-        <label>Quartiers<input type="number" id="nDistricts" min="2" max="12" placeholder="auto"></label>
-        <label>Ressauts / colline<input type="number" id="nLedges" min="0" max="3" placeholder="auto"></label>
-        <label>Placettes<input type="number" id="nSquares" min="0" max="8" placeholder="auto"></label>
-        <label>Églises<input type="number" id="nChurches" min="0" max="12" placeholder="auto"></label>
-        <label>Auberges<input type="number" id="nInns" min="0" max="10" placeholder="auto"></label>
-        <label>Îles<input type="number" id="nIslands" min="0" max="3" placeholder="auto"></label>
-        <label>Biefs à moulins<input type="number" id="nCanals" min="0" max="3" placeholder="auto"></label>
-        <label>Forêt (%)<input type="number" id="forest" min="0" max="100" placeholder="auto"></label>
+        <label><span data-fr="Nombre de collines">Number of hills</span><input type="number" id="nHills" min="0" max="10" placeholder="auto"></label>
+        <label title="Cliffs or retaining walls that cut each hill into flat terraces (0 = smooth slopes)" data-fr-title="Falaises ou murs de soutènement qui découpent chaque colline en paliers plats (0 = pentes douces)"><span data-fr="Falaises par colline">Cliff steps per hill</span><input type="number" id="nLedges" min="0" max="3" placeholder="auto"></label>
+      </div>
+      <label><span data-fr="Forme de la colline principale">Shape of the main hill</span>
+        <select id="hillType">
+          <option value="auto" data-fr="Au hasard" selected>Random</option>
+          <option value="butte" data-fr="Butte isolée (Vézelay)">Lone knoll (Vézelay)</option>
+          <option value="crete" data-fr="Crête allongée (Nuremberg)">Long ridge (Nuremberg)</option>
+          <option value="eperon" data-fr="Éperon d'un plateau (Provins, Laon)">Spur of a plateau (Provins, Laon)</option>
+          <option value="table" data-fr="Table aux flancs abrupts (Orvieto)">Mesa with sheer sides (Orvieto)</option>
+          <option value="dissymetrique" data-fr="Dissymétrique (douce / falaise)">Lopsided (gentle / cliff)</option>
+        </select>
+      </label>
+      <label><span data-fr="Forme de la vallée">Shape of the valley</span>
+        <select id="valleyType">
+          <option value="auto" data-fr="Au hasard" selected>Random</option>
+          <option value="large" data-fr="Vallée large">Wide valley</option>
+          <option value="gorge" data-fr="Gorge étroite">Narrow gorge</option>
+          <option value="confluence" data-fr="Confluence de deux vallées">Two valleys meeting</option>
+          <option value="meandre" data-fr="Méandre (Besançon)">River loop (Besançon)</option>
+        </select>
+      </label>
+    </details>
+
+    <details open>
+      <summary><span data-fr="Combien ?">How many?</span> <span class="muted" data-fr="(vide = au hasard)">(empty = random)</span></summary>
+      <div class="counts">
+        <label><span data-fr="Rivières">Rivers</span><input type="number" id="nRivers" min="0" max="3" placeholder="auto"></label>
+        <label><span data-fr="Portes">Gates</span><input type="number" id="nGates" min="2" max="8" placeholder="auto"></label>
+        <label><span data-fr="Enceintes">Walls (rings)</span><input type="number" id="nRings" min="1" max="3" placeholder="auto"></label>
+        <label><span data-fr="Quartiers">Quarters</span><input type="number" id="nDistricts" min="2" max="12" placeholder="auto"></label>
+        <label><span data-fr="Placettes">Small squares</span><input type="number" id="nSquares" min="0" max="8" placeholder="auto"></label>
+        <label><span data-fr="Églises">Churches</span><input type="number" id="nChurches" min="0" max="12" placeholder="auto"></label>
+        <label><span data-fr="Auberges">Inns</span><input type="number" id="nInns" min="0" max="10" placeholder="auto"></label>
+        <label><span data-fr="Îles">Islands</span><input type="number" id="nIslands" min="0" max="3" placeholder="auto"></label>
+        <label><span data-fr="Biefs à moulins">Mill races</span><input type="number" id="nCanals" min="0" max="3" placeholder="auto"></label>
+        <label><span data-fr="Forêt (%)">Forest (%)</span><input type="number" id="forest" min="0" max="100" placeholder="auto"></label>
       </div>
     </details>
 
     <div class="row">
-      <label>Plan
+      <label><span data-fr="Plan">Layout</span>
         <select id="plan">
-          <option value="organique" selected>Organique</option>
-          <option value="bastide">Bastide (damier)</option>
-          <option value="auto">Au hasard</option>
+          <option value="organique" data-fr="Organique" selected>Organic</option>
+          <option value="bastide" data-fr="Bastide (damier)">Bastide (grid)</option>
+          <option value="auto" data-fr="Au hasard">Random</option>
         </select>
       </label>
-      <label>Enceinte
+      <label><span data-fr="Enceinte">Wall</span>
         <select id="walls">
-          <option value="simple" selected>Simple</option>
-          <option value="double">Double (lices)</option>
-          <option value="auto">Au hasard</option>
+          <option value="simple" data-fr="Simple" selected>Single</option>
+          <option value="double" data-fr="Double (lices)">Double (lists)</option>
+          <option value="auto" data-fr="Au hasard">Random</option>
         </select>
       </label>
     </div>
 
-    <label>Forme de la colline
-      <select id="hillType">
-        <option value="auto" selected>Au hasard</option>
-        <option value="butte">Butte isolée (Vézelay)</option>
-        <option value="crete">Crête allongée (Nuremberg)</option>
-        <option value="eperon">Éperon d'un plateau (Provins, Laon)</option>
-        <option value="table">Table aux flancs abrupts (Orvieto)</option>
-        <option value="dissymetrique">Dissymétrique (douce / falaise)</option>
-      </select>
-    </label>
-
-    <label>Forme de la vallée
-      <select id="valleyType">
-        <option value="auto" selected>Au hasard</option>
-        <option value="large">Vallée large</option>
-        <option value="gorge">Gorge étroite</option>
-        <option value="confluence">Confluence de deux vallées</option>
-        <option value="meandre">Méandre (Besançon)</option>
-      </select>
-    </label>
-
-    <label>Ville haute et ville basse
+    <label><span data-fr="Ville haute et ville basse">Upper and lower town</span>
       <select id="twin">
-        <option value="non" selected>Non</option>
-        <option value="oui">Oui (comme Provins)</option>
-        <option value="auto">Au hasard</option>
+        <option value="non" data-fr="Non" selected>No</option>
+        <option value="oui" data-fr="Oui (comme Provins)">Yes (like Provins)</option>
+        <option value="auto" data-fr="Au hasard">Random</option>
       </select>
     </label>
 
     <div class="buttons">
-      <button id="random" class="primary">Nouvelle ville</button>
-      <button id="apply">Appliquer</button>
+      <button id="random" class="primary" data-fr="Nouvelle ville">New city</button>
+      <button id="apply" data-fr="Appliquer">Apply</button>
     </div>
 
     <details open>
-      <summary>Bâtiments importants</summary>
+      <summary data-fr="Bâtiments importants">Landmarks</summary>
       <div id="buildings" class="checks"></div>
     </details>
 
     <section id="info"></section>
 
     <details open>
-      <summary>Quartiers <span class="muted">(clique pour renommer)</span></summary>
+      <summary><span data-fr="Quartiers">Quarters</span> <span class="muted" data-fr="(clique pour renommer)">(click to rename)</span></summary>
       <div id="districts"></div>
     </details>
 
     <details>
-      <summary>Fiche de la ville</summary>
+      <summary data-fr="Fiche de la ville">City sheet</summary>
       <div id="sheet" class="sheet"></div>
-      <div class="buttons"><button id="md">Exporter la fiche (.md)</button></div>
+      <div class="buttons"><button id="md" data-fr="Exporter la fiche (.md)">Export sheet (.md)</button></div>
     </details>
 
     <div class="buttons">
-      <button id="save">Enregistrer</button>
-      <button id="load">Charger</button>
+      <button id="save" data-fr="Enregistrer">Save</button>
+      <button id="load" data-fr="Charger">Load</button>
       <input id="file" type="file" accept=".json,application/json" hidden>
     </div>
     <div class="buttons">
-      <button id="svg">Exporter SVG</button>
-      <button id="png">Exporter PNG</button>
+      <button id="svg" data-fr="Exporter SVG">Export SVG</button>
+      <button id="png" data-fr="Exporter PNG">Export PNG</button>
     </div>
 
-    <p class="hint">Même graine + mêmes réglages = même ville. « Enregistrer » crée un petit fichier .json avec tous les réglages et les noms ; « Charger » le rouvre. L'adresse de la page garde aussi tout : tu peux la mettre en favori.</p>
+    <p class="hint" data-fr="Même graine + mêmes réglages = même ville. « Enregistrer » crée un petit fichier .json avec tous les réglages et les noms ; « Charger » le rouvre. L'adresse de la page garde aussi tout : tu peux la mettre en favori.">Same seed + same settings = same city. “Save” writes a small .json file with all settings and names; “Load” opens it again. The page address keeps everything too: you can bookmark it.</p>
   </aside>
 
   <main>
     <div class="views" role="tablist">
-      <button data-view="plan" class="on">Plan</button>
-      <button data-view="relief">Relief</button>
-      <button data-view="pentes">Pentes</button>
+      <button data-view="plan" class="on" data-fr="Plan">Map</button>
+      <button data-view="relief" data-fr="Relief">Relief</button>
+      <button data-view="pentes" data-fr="Pentes">Slopes</button>
     </div>
     <div id="map"></div>
-    <div id="busy" class="busy" hidden>Génération…</div>
+    <div id="busy" class="busy" hidden data-fr="Génération…">Generating…</div>
     <div class="zoom">
-      <button id="zoomIn" title="Zoomer">+</button>
-      <button id="zoomOut" title="Dézoomer">−</button>
-      <button id="zoomReset" title="Vue entière">⤢</button>
+      <button id="zoomIn" title="Zoom in" data-fr-title="Zoomer">+</button>
+      <button id="zoomOut" title="Zoom out" data-fr-title="Dézoomer">−</button>
+      <button id="zoomReset" title="Whole map" data-fr-title="Vue entière">⤢</button>
     </div>
   </main>
-
-  <script src="geo.js?v=20261105a"></script>
-  <script src="catalog.js?v=20261105a"></script>
-  <script src="land.js?v=20261105a"></script>
-  <script src="water.js?v=20261105a"></script>
-  <script src="outskirts.js?v=20261105a"></script>
-  <script src="monuments.js?v=20261105a"></script>
-  <script src="names.js?v=20261105a"></script>
-  <script src="generator.js?v=20261105a"></script>
-  <script src="lore.js?v=20261105a"></script>
-  <script src="render.js?v=20261105a"></script>
-  <script src="app.js?v=20261105a"></script>
+  <script src="i18n.js?v=20261105b"></script>
+  <script src="geo.js?v=20261105b"></script>
+  <script src="catalog.js?v=20261105b"></script>
+  <script src="land.js?v=20261105b"></script>
+  <script src="water.js?v=20261105b"></script>
+  <script src="outskirts.js?v=20261105b"></script>
+  <script src="monuments.js?v=20261105b"></script>
+  <script src="names.js?v=20261105b"></script>
+  <script src="generator.js?v=20261105b"></script>
+  <script src="lore.js?v=20261105b"></script>
+  <script src="lore-en.js?v=20261105b"></script>
+  <script src="render.js?v=20261105b"></script>
+  <script src="app.js?v=20261105b"></script>
 </body>
 </html>

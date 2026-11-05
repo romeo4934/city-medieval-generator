@@ -7,7 +7,7 @@
  */
 
 function makeOutskirts(T) {
-  const { roads, rivers, rand, R, wallDist, moatOuter, slopeAt, altitude, free, reserve, rect, saint } = T;
+  const { roads, rivers, rand, R, wallDist, moatOuter, slopeAt, altitude, free, reserve, rect, saint, X } = T;
   const norm = v => { const l = Math.hypot(v[0], v[1]) || 1; return [v[0] / l, v[1] / l]; };
   const items = [];
   // Un point le long d'une route, à une distance donnée du centre, et la direction de la route
@@ -33,12 +33,12 @@ function makeOutskirts(T) {
   // Église de faubourg : sur la plus longue route, juste après les dernières maisons
   if (roadsByLen[0]) {
     const spot = besideRoad(along(roadsByLen[0], R * 1.2, R * 1.5), 30, 22, 4.5);
-    if (spot) items.push({ kind: 'church', poly: spot.poly, at: spot.c, axis: spot.u, label: saint() + '-hors-les-Murs' });
+    if (spot) items.push({ kind: 'church', poly: spot.poly, at: spot.c, axis: spot.u, label: X.withoutWalls(saint()) });
   }
   // Maladrerie : loin, sur une autre route (on tenait les lépreux à l'écart)
   if (roadsByLen.length > 1) {
     const spot = besideRoad(along(roadsByLen[1], R * 1.6, R * 2.1), 44, 32, 4.5);
-    if (spot) items.push({ kind: 'leper', poly: spot.poly, at: spot.c, axis: spot.u, label: 'Maladrerie' });
+    if (spot) items.push({ kind: 'leper', poly: spot.poly, at: spot.c, axis: spot.u, label: X.outskirts.leper });
   }
   // Gibet : sur le point le plus haut le long d'une route, bien visible
   {
@@ -47,7 +47,7 @@ function makeOutskirts(T) {
     if (best) {
       const n = [-best[1][1], best[1][0]], c = [best[0][0] + n[0] * 14, best[0][1] + n[1] * 14];
       const poly = rect(c, best[1], 10, 6);
-      if (free(poly)) { reserve(poly); items.push({ kind: 'gallows', poly, at: c, axis: best[1], label: 'Gibet' }); }
+      if (free(poly)) { reserve(poly); items.push({ kind: 'gallows', poly, at: c, axis: best[1], label: X.outskirts.gallows }); }
     }
   }
   // Au bord de la rivière, hors les murs : tanneries (en aval) et moulins
@@ -64,9 +64,9 @@ function makeOutskirts(T) {
       }
       return null;
     };
-    for (const cand of down.sort(() => rand() - 0.5)) { const s = bank(cand, 40, 18); if (s) { items.push({ kind: 'tannery', poly: s.poly, at: s.c, axis: s.u, label: 'Tanneries' }); break; } }
+    for (const cand of down.sort(() => rand() - 0.5)) { const s = bank(cand, 40, 18); if (s) { items.push({ kind: 'tannery', poly: s.poly, at: s.c, axis: s.u, label: X.outskirts.tannery }); break; } }
     let mills = 0;
-    for (const cand of up.sort(() => rand() - 0.5)) { if (mills >= 2) break; const s = bank(cand, 12, 9); if (s) { items.push({ kind: 'watermill', poly: s.poly, at: s.c, axis: s.u, label: 'Moulin' }); mills++; } }
+    for (const cand of up.sort(() => rand() - 0.5)) { if (mills >= 2) break; const s = bank(cand, 12, 9); if (s) { items.push({ kind: 'watermill', poly: s.poly, at: s.c, axis: s.u, label: X.outskirts.watermill }); mills++; } }
   }
   return items;
 }

@@ -14,10 +14,10 @@ const path = require('path');
 const vm = require('vm');
 const os = require('os');
 
-const FILES = ['geo.js', 'catalog.js', 'land.js', 'water.js', 'outskirts.js', 'monuments.js', 'names.js', 'generator.js', 'lore.js', 'render.js'];
+const FILES = ['i18n.js', 'geo.js', 'catalog.js', 'land.js', 'water.js', 'outskirts.js', 'monuments.js', 'names.js', 'generator.js', 'lore.js', 'lore-en.js', 'render.js'];
 
 function optionsFor(i) {
-  const sizes = ['petite', 'moyenne', 'grande', 'capitale'];
+  const sizes = ['petite', 'moyenne', 'grande', i % 8 === 7 ? 'metropole' : 'capitale'];
   const reliefs = ['plaine', 'colline', 'collines', 'vallee'];
   const rivers = ['non', 'oui', 'deux', 'auto'];
   const ages = ['jeune', 'ancienne', 'tresancienne', 'auto'];
@@ -27,6 +27,8 @@ function optionsFor(i) {
     seed: 'test' + i, size: sizes[i % 4], relief: reliefs[(i >> 2) % 4], river: rivers[(i >> 4) % 4], age: ages[(i >> 1) % 4],
     plan: i % 5 === 0 ? 'bastide' : 'organique', walls: i % 3 === 0 ? 'double' : 'simple', twin: i % 7 === 3 ? 'oui' : 'non',
     ledges: i % 2 ? 'oui' : 'non', hillType: hills[i % 5], valleyType: valleys[(i >> 1) % 4],
+    lang: i % 2 ? 'fr' : 'en',
+    nHills: i % 11 === 5 ? 10 : i % 11 === 6 ? 6 : null, nLedges: i % 13 === 4 ? 3 : null,
     buildings: i % 3 ? ['temple', 'chateau', 'palais', 'guildes', 'universite', 'caserne', 'prison', 'hospice', 'bains', 'arene', 'cimetiere', 'port', 'monastere', 'moulin'] : ['temple', 'chateau'],
   };
 }

@@ -23,6 +23,7 @@ const SIZES = {
   moyenne:  { cells: 25, gates: 4, districts: 5 },
   grande:   { cells: 45, gates: 5, districts: 7 },
   capitale: { cells: 70, gates: 6, districts: 9 },
+  metropole: { cells: 110, gates: 7, districts: 12 },
 };
 
 const BUILDINGS = [
