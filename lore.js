@@ -68,6 +68,15 @@ function citySheet(city) {
     ? `Un fossé en eau d'une quinzaine de mètres fait le tour du rempart ; on le franchit sur un pont devant chaque porte.`
     : `Un fossé sec, creusé au pied du rempart, fait le tour de la ville ; un pont le franchit devant chaque porte.`);
   if (city.bridges.length) site.push(`${city.bridges.length > 1 ? city.bridges.length + ' ponts franchissent' : 'Un pont franchit'} la rivière.`);
+  const A = s.altitude;
+  if (A) {
+    if (city.relief === 'plaine') site.push(`Le marché est à ${A.plaza} m d'altitude ; le terrain ne varie que de quelques mètres.`);
+    else site.push(`Le marché est à ${A.plaza} m d'altitude ; le point le plus haut atteint ${A.max} m, soit ${A.max - A.plaza} m au-dessus. Les pentes les plus fortes dépassent ${A.steepest} % : au-delà de 25 %, on ne bâtit pas, et entre 15 et 25 % les maisons s'accrochent en terrasses.`);
+  }
+  if (city.cliffs.length) {
+    const drops = city.cliffs.map(c => c.drop);
+    site.push(`La hauteur monte par esplanades : des ressauts de ${Math.min(...drops)} à ${Math.max(...drops)} m, falaises ou murs de soutènement, séparent des paliers plats où l'on a bâti.${city.stairs.length ? ' On passe de l’un à l’autre par ' + (city.stairs.length > 1 ? city.stairs.length + ' escaliers : ' + city.stairs.map(s2 => s2.name).join(', ') : 'un seul escalier, ' + city.stairs[0].name) + '.' : ''}`);
+  }
   L.push(site.join(' '), '');
 
   // --- Histoire déduite des enceintes ---

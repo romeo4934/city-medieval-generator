@@ -138,12 +138,31 @@ function generateCity(opts) {
       hills.push(hl);
     }
   }
+  // Esplanades : la colline monte par paliers plats séparés par des ressauts (falaise ou mur de soutènement),
+  // comme à Lyon, Édimbourg ou au bord de la ville haute de Provins
+  const rL = rng('ressauts');
+  const ledges = ['colline', 'collines'].includes(relief) && (opts.ledges === 'oui' || (opts.ledges === 'auto' && rL() < 0.5));
+  if (ledges) hills.forEach((hl, k) => {
+    if (k > 0 && rL() < 0.5) return;
+    const m = rL() < 0.5 ? 1 : 2;
+    hl.steps = m === 1 ? [0.4 + rL() * 0.15] : [0.25 + rL() * 0.1, 0.6 + rL() * 0.12];
+  });
+  const LEDGE_W = 0.045;   // largeur du ressaut, en fraction de la pente de la colline (quelques mètres)
+  const hillShape = (k, th) => {
+    const hl = hills[k];
+    const p0 = k === 0 ? ph[3] : hl.ph, p1 = k === 0 ? ph[4] : hl.ph * 1.7;
+    return 1 + 0.14 * Math.sin(3 * th + p0) + 0.07 * Math.sin(5 * th + p1);
+  };
   const hillHeight = (k, x, y) => {
     const hl = hills[k];
     const dx = x - hl.c[0], dy = y - hl.c[1], d = Math.hypot(dx, dy), th = Math.atan2(dy, dx);
-    const p0 = k === 0 ? ph[3] : hl.ph, p1 = k === 0 ? ph[4] : hl.ph * 1.7;
-    const wob = 1 + 0.14 * Math.sin(3 * th + p0) + 0.07 * Math.sin(5 * th + p1);
-    return hl.h * (1 - smoothstep((d - hl.r0 * wob) / (hl.band * wob)));
+    const wob = hillShape(k, th);
+    const u = (d - hl.r0 * wob) / (hl.band * wob);
+    if (!hl.steps) return hl.h * (1 - smoothstep(u));
+    // Paliers : 20 % de pente douce + 80 % répartis en ressauts presque verticaux
+    let p = 0.2 * (1 - smoothstep(u));
+    for (const uk of hl.steps) p += (0.8 / hl.steps.length) * (1 - smoothstep((u - uk) / LEDGE_W + 0.5));
+    return hl.h * p;
   };
   const elev = (x, y) => {
     let h = 0.03 * (Math.sin(x / 97 + ph[0]) + Math.sin(y / 131 + ph[1]) + Math.sin((x + y) / 173 + ph[2])) / 3;
@@ -160,12 +179,53 @@ function generateCity(opts) {
     return h;
   };
   const slope = (x, y) => Math.hypot(elev(x + 3, y) - elev(x - 3, y), elev(x, y + 3) - elev(x, y - 3)) / 6;
+  // Altitudes réelles : la colline (ou les versants) mesure quelques dizaines de mètres ; la plaine est presque plate
+  const rAlt = rng('altitude');
+  const baseAlt = Math.round(60 + rAlt() * 180);
+  const reliefHeight = relief === 'plaine' ? 6 : relief === 'vallee' ? 55 + rAlt() * 30 : 40 + rAlt() * 40;
+  const altitude = (x, y) => baseAlt + elev(x, y) * reliefHeight;              // en mètres
+  const slopePct = (x, y) => slope(x, y) * reliefHeight * 100;                 // pente en %
+  const gradient = (x, y) => [elev(x + 3, y) - elev(x - 3, y), elev(x, y + 3) - elev(x, y - 3)];
+  // Seuils (urbanisme médiéval réel) : on bâtit jusqu'à ~15 %, en terrasses et clairsemé jusqu'à 25 %, rien au-delà
+  const SLOPE_EASY = 15, SLOPE_MAX = 25;
+
+  // Lignes de ressaut (haut de la falaise) et index de leurs segments pour tester les maisons
+  const cliffs = [];
+  hills.forEach((hl, k) => (hl.steps || []).forEach(uk => {
+    const pts = [];
+    for (let i = 0; i <= 120; i++) {
+      const th = (i / 120) * Math.PI * 2, wob = hillShape(k, th);
+      const d = hl.r0 * wob + (uk - LEDGE_W / 2) * hl.band * wob;
+      pts.push([hl.c[0] + Math.cos(th) * d, hl.c[1] + Math.sin(th) * d]);
+    }
+    cliffs.push({ points: pts, hill: k, center: hl.c, drop: Math.round((0.8 / hl.steps.length) * hl.h * reliefHeight) });
+  }));
+  const cliffSegs = cliffs.flatMap(cl => cl.points.slice(1).map((p, i) => [cl.points[i], p]));
+  const segX = (a, b, c, d) => {
+    const d1 = (b[0] - a[0]) * (c[1] - a[1]) - (b[1] - a[1]) * (c[0] - a[0]), d2 = (b[0] - a[0]) * (d[1] - a[1]) - (b[1] - a[1]) * (d[0] - a[0]);
+    const d3 = (d[0] - c[0]) * (a[1] - c[1]) - (d[1] - c[1]) * (a[0] - c[0]), d4 = (d[0] - c[0]) * (b[1] - c[1]) - (d[1] - c[1]) * (b[0] - c[0]);
+    return d1 * d2 < 0 && d3 * d4 < 0;
+  };
+  // Un polygone (maison) chevauche-t-il un ressaut ? (le bord de la falaise passe à travers, ou à moins de 2 m)
+  const onCliff = poly => {
+    if (!cliffSegs.length) return false;
+    const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]);
+    const x0 = Math.min(...xs) - 4, x1 = Math.max(...xs) + 4, y0 = Math.min(...ys) - 4, y1 = Math.max(...ys) + 4;
+    for (const [a, b] of cliffSegs) {
+      if (Math.max(a[0], b[0]) < x0 || Math.min(a[0], b[0]) > x1 || Math.max(a[1], b[1]) < y0 || Math.min(a[1], b[1]) > y1) continue;
+      for (let i = 0; i < poly.length; i++) if (segX(poly[i], poly[(i + 1) % poly.length], a, b)) return true;
+      const c = Geo.centroid(poly);
+      if (Geo.distToSegment(c, a, b) < 3) return true;
+    }
+    return false;
+  };
   // Pente "raide" : plus de 40 % de la pente maximale du relief
-  const steepLimit = hilly ? 0.6 * Math.min(...hills.map(hl => hl.h / hl.band)) : relief === 'vallee' ? 0.6 / valley.band : Infinity;
+  // Un îlot est "raide" si sa pente dépasse 25 % en son centre ou en son point d'origine
   cells.forEach(c => {
     const ctr = Geo.centroid(c.ids.map(id => verts[id]));
     c.elev = elev(...c.site);
-    c.steep = Math.max(slope(...c.site), slope(...ctr)) > steepLimit;
+    c.slope = Math.max(slopePct(...c.site), slopePct(...ctr));
+    c.steep = c.slope > SLOPE_MAX;
     c.top = hilly && !c.steep && hillHeight(0, ...c.site) > 0.8;   // plateau de la colline principale
   });
 
@@ -969,7 +1029,9 @@ function generateCity(opts) {
     cx /= W; cy /= W;
     let sxx = 0, syy = 0, sxy = 0;
     cents.forEach(([p, w]) => { sxx += w * (p[0] - cx) ** 2; syy += w * (p[1] - cy) ** 2; sxy += w * (p[0] - cx) * (p[1] - cy); });
-    const th = 0.5 * Math.atan2(2 * sxy, sxx - syy) + (rStreets() - 0.5) * 0.5;
+    let th = 0.5 * Math.atan2(2 * sxy, sxx - syy) + (rStreets() - 0.5) * 0.5;
+    // En pente, la rue suit la courbe de niveau (comme dans les villes de colline) : elle coupe l'îlot dans le sens de la pente
+    if (slopePct(cx, cy) > 8) { const g = gradient(cx, cy); th = Math.atan2(g[1], g[0]) + (rStreets() - 0.5) * 0.2; }
     const ax = [Math.cos(th), Math.sin(th)], cut = [-ax[1], ax[0]];
     const offLine = m => Math.abs((m[0] - cx) * ax[0] + (m[1] - cy) * ax[1]);
     const adj = new Map();
@@ -1103,8 +1165,8 @@ function generateCity(opts) {
     terraces: [], vineyards: [], fieldStrips: [[], [], []], meadows: [],
     plaza: [], stalls: [], wells: [], specials: [], labels: [],
     plan: bastide ? 'bastide' : 'organique', twin, doubleWall, arcades: [], halls: [],
+    cliffs: cliffs.map(cl => ({ points: cl.points, center: cl.center, drop: cl.drop })), stairs: [],
     hills: hillNames.map(h => h.name), squares: [], churches: [], inns: [], waterGates: [], streetLabels: [], streets: [], neighbours: [],
-    contours: [],
     gateNames: [],
     districts: districts.map(d => ({
       name: d.name, auto: d.auto, ring: d.ring, zone: zoneOf(d.cells[0]), size: d.cells.length,
@@ -1126,26 +1188,18 @@ function generateCity(opts) {
     }
   }
 
-  // Courbes de niveau (carrés marchants sur une grille d'altitude)
-  if (relief !== 'plaine') {
-    const G = 90, step = (2 * E) / G;
-    const H = [];
-    for (let j = 0; j <= G; j++) { H.push([]); for (let i = 0; i <= G; i++) H[j].push(elev(-E + i * step, -E + j * step)); }
-    const levels = hilly ? [0.12, 0.3, 0.48, 0.66, 0.84] : [0.12, 0.3, 0.5, 0.7, 0.9];
-    for (const L of levels) {
-      const segs = [];
-      for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
-        const v = [H[j][i], H[j][i + 1], H[j + 1][i + 1], H[j + 1][i]];
-        const x0 = -E + i * step, y0 = -E + j * step;
-        const P = [[x0, y0], [x0 + step, y0], [x0 + step, y0 + step], [x0, y0 + step]];
-        const e = k => { const a = P[k], b = P[(k + 1) % 4], va = v[k], vb = v[(k + 1) % 4], t = (L - va) / (vb - va); return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; };
-        const idx = (v[0] > L ? 1 : 0) | (v[1] > L ? 2 : 0) | (v[2] > L ? 4 : 0) | (v[3] > L ? 8 : 0);
-        const T = { 1: [[3, 0]], 2: [[0, 1]], 3: [[3, 1]], 4: [[1, 2]], 5: [[3, 0], [1, 2]], 6: [[0, 2]], 7: [[3, 2]],
-          8: [[2, 3]], 9: [[0, 2]], 10: [[0, 1], [2, 3]], 11: [[1, 2]], 12: [[1, 3]], 13: [[0, 1]], 14: [[3, 0]] }[idx];
-        if (T) for (const [p, q] of T) segs.push([e(p), e(q)]);
-      }
-      city.contours.push(segs);
+  // Terrain : grille d'altitude (m) et de pente (%), pour les courbes de niveau et les vues Relief / Pentes
+  {
+    const G = 150, step = (2 * E) / G;
+    const alt = [], slp = [];
+    for (let j = 0; j <= G; j++) for (let i = 0; i <= G; i++) {
+      const x = -E + i * step, y = -E + j * step;
+      alt.push(Math.round(altitude(x, y) * 10) / 10);
+      slp.push(Math.round(slopePct(x, y) * 10) / 10);
     }
+    city.terrain = { G, step, E, alt, slope: slp, flat: relief === 'plaine', easy: SLOPE_EASY, max: SLOPE_MAX,
+      min: Math.min(...alt), maxAlt: Math.max(...alt), base: baseAlt,
+      summits: hilly ? hills.map((hl, k) => ({ at: hl.c, alt: Math.round(altitude(...hl.c)), name: k === 0 ? (citadelSet.size ? (twin ? 'Ville Haute' : 'Citadelle') : 'Colline') : (hillNames[k - 1] || {}).name })) : [] };
   }
 
   const ridgeOf = (poly, u) => {
@@ -1206,7 +1260,8 @@ function generateCity(opts) {
   };
 
   // Façades sur rue : maisons rectangulaires alignées sur la rue, cour ou jardin derrière
-  const frontage = (block0, classes0, zone, rand, suburb) => {
+  const frontage = (block0, classes0, zone, rand, suburb, slopeHere = 0) => {
+    const onSlope = slopeHere > SLOPE_EASY;   // entre 15 et 25 % : maisons plus rares et moins profondes, en terrasses
     const Z = ZONES[zone];
     // Fusionne les segments alignés d'une même rue : une rangée de maisons continue
     let block = block0.slice(), classes = classes0.slice();
@@ -1236,8 +1291,8 @@ function generateCity(opts) {
       const rich = cls === 'main' || cls === 'place' || cls === 'boulevard' || cls === 'quai';
       const alley = cls === 'ruelle';
       const front = rich ? [Z.front[0], Z.front[0] + 2.5] : alley ? [Z.front[0] + 2, Z.front[1] + 3] : Z.front;
-      const skip = alley ? 0.45 : suburb ? 0.35 : zone === 'neuf' ? 0.08 : 0.03;
-      const rowDepth = between(rand, Z.depth) * (rich ? 1.2 : alley ? 0.8 : 1);   // profondeur commune à la rangée
+      const skip = (alley ? 0.45 : suburb ? 0.35 : zone === 'neuf' ? 0.08 : 0.03) + (onSlope ? 0.3 : 0);
+      const rowDepth = between(rand, Z.depth) * (rich ? 1.2 : alley ? 0.8 : 1) * (onSlope ? 0.7 : 1);   // profondeur commune à la rangée
       let t = 0;
       while (t < L - 1) {
         let w = between(rand, front);
@@ -1261,7 +1316,7 @@ function generateCity(opts) {
           if (tryD < 4) continue;
           const Q0 = [P0[0] + u[0] * w * ta, P0[1] + u[1] * w * ta], Q1 = [P1[0] - u[0] * w * tb, P1[1] - u[1] * w * tb];
           const r0 = intersectConvex([Q0, Q1, [Q1[0] + n[0] * tryD, Q1[1] + n[1] * tryD], [Q0[0] + n[0] * tryD, Q0[1] + n[1] * tryD]], block);
-          if (r0.length >= 3 && Math.abs(Geo.area(r0)) > 12 && !placed.some(p => overlaps(p, r0))) { house = r0; d = tryD; }
+          if (r0.length >= 3 && Math.abs(Geo.area(r0)) > 12 && !placed.some(p => overlaps(p, r0)) && !onCliff(r0)) { house = r0; d = tryD; }
         }
         if (!house) continue;
         placed.push(house);
@@ -1277,7 +1332,7 @@ function generateCity(opts) {
             const Q0 = [P0[0] + u[0] * w * k0, P0[1] + u[1] * w * k0], Q1 = [P0[0] + u[0] * w * k1, P0[1] + u[1] * w * k1];
             const r1 = intersectConvex([[Q0[0] + n[0] * a0, Q0[1] + n[1] * a0], [Q1[0] + n[0] * a0, Q1[1] + n[1] * a0],
               [Q1[0] + n[0] * a1, Q1[1] + n[1] * a1], [Q0[0] + n[0] * a1, Q0[1] + n[1] * a1]], block);
-            if (r1.length >= 3 && Math.abs(Geo.area(r1)) > 15 && !placed.some(p => overlaps(p, r1))) {
+            if (r1.length >= 3 && Math.abs(Geo.area(r1)) > 15 && !placed.some(p => overlaps(p, r1)) && !onCliff(r1)) {
               placed.push(r1);
               addHouse(r1, zone, rand, false);
               const rr = ridgeOf(r1, u);
@@ -1299,7 +1354,7 @@ function generateCity(opts) {
           const ad = between(rand, [3, 5.5]), gap = between(rand, [1.5, 4]);
           const cc = [mid[0] + n[0] * (d + gap + ad / 2), mid[1] + n[1] * (d + gap + ad / 2)];
           const shed = rect(cc, u, w * between(rand, [0.4, 0.75]), ad);
-          if (shed.every(q => inside(block, q)) && !placed.some(p => overlaps(p, shed))) { city.annexes.push(shed); placed.push(shed); }
+          if (shed.every(q => inside(block, q)) && !placed.some(p => overlaps(p, shed)) && !onCliff(shed)) { city.annexes.push(shed); placed.push(shed); }
         }
       }
     }
@@ -1422,8 +1477,11 @@ function generateCity(opts) {
       continue;
     }
     currentDistrict = fc.coarse.inner && !fc.coarse.citadel ? fc.coarse.district : null;
+    // Pente vérifiée sur la parcelle elle-même (centre et coins) : au-delà de 25 %, pas de maison
+    const fSlope = Math.max(slopePct(...Geo.centroid(block)), ...block.map(p => slopePct(...p)) .sort((a, b) => b - a).slice(1, 2));
+    if (fSlope > SLOPE_MAX) { city.terraces.push(block); continue; }
     if (fc.suburb) city.suburbGround.push(block);
-    people += frontage(block, classesAfterInset(poly, dists, classes, block), fc.zone, rand, fc.suburb) * ZONES[fc.zone].people;
+    people += frontage(block, classesAfterInset(poly, dists, classes, block), fc.zone, rand, fc.suburb, fSlope) * ZONES[fc.zone].people;
   }
 
   // Quartiers non redécoupés : place, monuments, pentes, champs
@@ -1656,6 +1714,26 @@ function generateCity(opts) {
       city.squares.push({ name, at: sq.at, district: c.district });
     }
 
+    // Escaliers : là où une rue franchit un ressaut
+    if (cliffSegs.length) {
+      const STAIR_NAMES = ['Escalier des Pénitents', 'Montée des Cent-Marches', 'Escalier du Guet', 'Degrés Saint-Jean', 'Escalier de la Chèvre',
+        'Montée des Lavandières', 'Escalier du Diable', 'Degrés des Chanoines', 'Escalier Noir', 'Montée du Pilori'];
+      const stairCls = new Set(['main', 'rue', 'ruelle', 'boulevard', 'place', 'quai']);
+      const roadSegs = [];
+      for (const [key, cls] of fclass) if (stairCls.has(cls)) { const [a, b] = unkey(key); roadSegs.push([fverts[a], fverts[b]]); }
+      roads.forEach((p, i) => { if (!(bastide && roadMeta[i].kind === 'inner')) for (let k = 0; k + 1 < p.length; k++) roadSegs.push([verts[p[k]], verts[p[k + 1]]]); });
+      for (const [a, b] of roadSegs) for (const [c, d] of cliffSegs) {
+        if (!segX(a, b, c, d)) continue;
+        // point d'intersection
+        const den = (b[0] - a[0]) * (d[1] - c[1]) - (b[1] - a[1]) * (d[0] - c[0]);
+        const t = ((c[0] - a[0]) * (d[1] - c[1]) - (c[1] - a[1]) * (d[0] - c[0])) / den;
+        const at = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+        if (city.stairs.some(st => dist(st.at, at) < 15)) continue;
+        const name = pickFrom(STAIR_NAMES) || 'Escalier';
+        city.stairs.push({ at, angle: (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI, name });
+      }
+    }
+
     // Auberges : sur les grandes rues, près de chaque porte et près du marché
     const targets = [plaza.site, ...gates.map(g => verts[g])];
     const innNames = INN_NAMES.slice();
@@ -1714,6 +1792,8 @@ function generateCity(opts) {
     streets: [...fclass.values()].filter(v => v === 'rue').length,
     alleys: [...fclass.values()].filter(v => v === 'ruelle').length,
     churches: city.churches.length,
+    altitude: { base: baseAlt, min: Math.round(city.terrain.min), max: Math.round(city.terrain.maxAlt), plaza: Math.round(altitude(...plaza.site)),
+      steepest: Math.round(Math.max(...city.terrain.slope)) },
     missing,
   };
   return city;

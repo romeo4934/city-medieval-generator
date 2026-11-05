@@ -74,6 +74,14 @@
       </label>
     </div>
 
+    <label>Esplanades et ressauts (falaises entre paliers)
+      <select id="ledges">
+        <option value="auto" selected>Au hasard (collines)</option>
+        <option value="oui">Oui</option>
+        <option value="non">Non</option>
+      </select>
+    </label>
+
     <label>Ville haute et ville basse
       <select id="twin">
         <option value="non" selected>Non</option>
@@ -119,6 +127,11 @@
   </aside>
 
   <main>
+    <div class="views" role="tablist">
+      <button data-view="plan" class="on">Plan</button>
+      <button data-view="relief">Relief</button>
+      <button data-view="pentes">Pentes</button>
+    </div>
     <div id="map"></div>
     <div class="zoom">
       <button id="zoomIn" title="Zoomer">+</button>

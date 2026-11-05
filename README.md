@@ -8,6 +8,13 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 
 ## Le modèle
 
+**Le terrain est mesuré.** L'altitude est en mètres et la pente en pourcentage, vérifiée pour chaque parcelle : on bâtit normalement jusqu'à 15 %, en terrasses et clairsemé jusqu'à 25 %, jamais au-delà. Une colline peut monter par **esplanades** : des paliers plats séparés par des ressauts de 10 à 25 m (falaise ou mur de soutènement), qu'aucune maison ne chevauche, franchis par des **escaliers** nommés. En pente, les rues suivent les courbes de niveau.
+
+**Trois vues**, avec les boutons en haut de la carte :
+- **Plan** : la carte de la ville, avec l'ombrage du relief, les courbes de niveau tous les 10 m et les ressauts ;
+- **Relief** : les couleurs d'altitude, l'ombrage, les courbes tous les 5 m cotées en mètres et les sommets cotés, avec la ville en surimpression ;
+- **Pentes** : la carte des pentes par classe (facile, constructible, terrasses, trop raide, rocher), avec les maisons en noir pour vérifier où l'on a bâti.
+
 **Le relief décide de tout.** Une carte d'altitude (plaine, colline, plusieurs collines comme Athènes ou Rome, ou vallée) détermine :
 - où coulent les **rivières**, qui suivent les creux et ne remontent jamais une colline ;
 - où l'on **ne construit pas** : les pentes raides deviennent des vignes ou des jardins en terrasses ;

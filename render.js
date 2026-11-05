@@ -81,7 +81,196 @@ const smoothLine = pts => {
   return p;
 };
 
-function renderSVG(city) {
+
+// ---------- Terrain : courbes de niveau, ombrage, couleurs d'altitude et de pente ----------
+
+// Courbes de niveau d'une altitude donnée (carrés marchants sur la grille du terrain)
+function contourSegments(T, level) {
+  const { G, step, E, alt } = T, segs = [];
+  const at = (i, j) => alt[j * (G + 1) + i];
+  const TABLE = { 1: [[3, 0]], 2: [[0, 1]], 3: [[3, 1]], 4: [[1, 2]], 5: [[3, 0], [1, 2]], 6: [[0, 2]], 7: [[3, 2]],
+    8: [[2, 3]], 9: [[0, 2]], 10: [[0, 1], [2, 3]], 11: [[1, 2]], 12: [[1, 3]], 13: [[0, 1]], 14: [[3, 0]] };
+  for (let j = 0; j < G; j++) for (let i = 0; i < G; i++) {
+    const v = [at(i, j), at(i + 1, j), at(i + 1, j + 1), at(i, j + 1)];
+    const idx = (v[0] > level ? 1 : 0) | (v[1] > level ? 2 : 0) | (v[2] > level ? 4 : 0) | (v[3] > level ? 8 : 0);
+    const T2 = TABLE[idx];
+    if (!T2) continue;
+    const x0 = -E + i * step, y0 = -E + j * step;
+    const P = [[x0, y0], [x0 + step, y0], [x0 + step, y0 + step], [x0, y0 + step]];
+    const e = k => { const a = P[k], b = P[(k + 1) % 4], t = (level - v[k]) / (v[(k + 1) % 4] - v[k]); return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]; };
+    for (const [p, q] of T2) segs.push([e(p), e(q)]);
+  }
+  return segs;
+}
+
+// Image du terrain (navigateur seulement) : 'shade' = ombrage seul, 'relief' = couleurs d'altitude ombrées, 'slope' = classes de pente
+function terrainImage(T, mode) {
+  if (typeof document === 'undefined') return null;
+  const { G, step, alt, slope } = T;
+  const S = G * 2, cv = document.createElement('canvas');
+  cv.width = cv.height = S;
+  const ctx = cv.getContext('2d'), img = ctx.createImageData(S, S);
+  const sample = (arr, x, y) => {   // interpolation bilinéaire dans la grille
+    const i = Math.min(G - 1, Math.floor(x)), j = Math.min(G - 1, Math.floor(y)), fx = x - i, fy = y - j;
+    const a = arr[j * (G + 1) + i], b = arr[j * (G + 1) + i + 1], c = arr[(j + 1) * (G + 1) + i], d = arr[(j + 1) * (G + 1) + i + 1];
+    return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy;
+  };
+  const span = Math.max(1, T.maxAlt - T.min);
+  const HYPSO = [[0, [199, 214, 168]], [0.3, [222, 222, 170]], [0.55, [226, 204, 150]], [0.8, [200, 168, 124]], [1, [176, 150, 120]]];
+  const hypso = t => {
+    for (let k = 1; k < HYPSO.length; k++) if (t <= HYPSO[k][0]) {
+      const [t0, c0] = HYPSO[k - 1], [t1, c1] = HYPSO[k], f = (t - t0) / (t1 - t0);
+      return c0.map((v, n) => v + (c1[n] - v) * f);
+    }
+    return HYPSO[HYPSO.length - 1][1];
+  };
+  const SLOPE_COLORS = [[8, [233, 237, 220]], [15, [243, 227, 161]], [25, [240, 179, 107]], [45, [217, 105, 79]], [Infinity, [168, 71, 58]]];
+  for (let py = 0; py < S; py++) for (let px = 0; px < S; px++) {
+    const gx = (px + 0.5) / 2, gy = (py + 0.5) / 2;
+    const dzdx = (sample(alt, Math.min(G, gx + 1), gy) - sample(alt, Math.max(0, gx - 1), gy)) / (2 * step);
+    const dzdy = (sample(alt, gx, Math.min(G, gy + 1)) - sample(alt, gx, Math.max(0, gy - 1))) / (2 * step);
+    // Ombrage : lumière venant du nord-ouest (haut-gauche), relief exagéré 3 fois pour la lisibilité
+    const nx = -3 * dzdx, ny = -3 * dzdy, nz = 1, nl = Math.hypot(nx, ny, nz);
+    const lx = -0.6, ly = -0.6, lz = 0.53;
+    const illum = Math.max(0, (nx * lx + ny * ly + nz * lz) / nl / Math.hypot(lx, ly, lz));
+    const o = (py * S + px) * 4;
+    if (mode === 'shade') {
+      const dark = Math.max(0, 0.86 - illum);           // seulement les versants à l'ombre
+      img.data[o] = 70; img.data[o + 1] = 55; img.data[o + 2] = 35; img.data[o + 3] = Math.min(255, dark * 330);
+    } else if (mode === 'relief') {
+      const c = hypso((sample(alt, gx, gy) - T.min) / span), k = 0.62 + 0.72 * illum;   // terrain plat ≈ couleur pure
+      img.data[o] = Math.min(255, c[0] * k); img.data[o + 1] = Math.min(255, c[1] * k); img.data[o + 2] = Math.min(255, c[2] * k); img.data[o + 3] = 255;
+    } else {
+      const sp = sample(slope, gx, gy), c = SLOPE_COLORS.find(([lim]) => sp <= lim)[1], k = 0.85 + 0.2 * illum;
+      img.data[o] = Math.min(255, c[0] * k); img.data[o + 1] = Math.min(255, c[1] * k); img.data[o + 2] = Math.min(255, c[2] * k); img.data[o + 3] = 255;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return cv.toDataURL('image/png');
+}
+
+// Courbes de niveau en mètres : fines tous les `minor` m, épaisses tous les `major` m
+function contourLevels(T, minor) {
+  const levels = [];
+  for (let l = Math.ceil(T.min / minor) * minor; l < T.maxAlt; l += minor) levels.push(l);
+  return levels;
+}
+
+// Ressauts : ligne du haut de la falaise, hachures vers le bas ; escaliers là où une rue la franchit
+function drawCliffs(out, city) {
+  for (const cl of city.cliffs || []) {
+    const P = cl.points, ticks = [];
+    out.push(`<path d="${lineD(P)}" fill="none" stroke="#6e5a44" stroke-width="2" stroke-linejoin="round"/>`);
+    for (let i = 0; i + 1 < P.length; i++) {
+      const a = P[i], b = P[i + 1], L = Math.hypot(b[0] - a[0], b[1] - a[1]);
+      let nx = -(b[1] - a[1]) / L, ny = (b[0] - a[0]) / L;
+      const m = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      if ((m[0] - cl.center[0]) * nx + (m[1] - cl.center[1]) * ny < 0) { nx = -nx; ny = -ny; }   // vers l'extérieur = vers le bas
+      for (let t = 0; t < L; t += 3.5) {
+        const p = [a[0] + (b[0] - a[0]) * (t / L), a[1] + (b[1] - a[1]) * (t / L)];
+        ticks.push([p, [p[0] + nx * 4.5, p[1] + ny * 4.5]]);
+      }
+    }
+    out.push(`<path d="${ticks.map(lineD).join('')}" stroke="#6e5a44" stroke-width="0.9"/>`);
+  }
+  for (const st of city.stairs || []) {
+    out.push(`<g transform="translate(${n1(st.at[0])} ${n1(st.at[1])}) rotate(${n1(st.angle)})"><rect x="-5" y="-3.5" width="10" height="7" fill="${COLORS.street}" stroke="${COLORS.buildingLine}" stroke-width="0.8"/><path d="M-3 -3.5V3.5M-1 -3.5V3.5M1 -3.5V3.5M3 -3.5V3.5" stroke="${COLORS.buildingLine}" stroke-width="0.6"/></g>`);
+  }
+}
+
+// Vues Relief et Pentes : le terrain d'abord, la ville en surimpression légère
+function renderTerrainView(city, view) {
+  const E = city.E, T = city.terrain, fs = E / 38, out = [];
+  const z = k => `calc(var(--z, 1) * ${n1(k)}px)`;
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" viewBox="${n1(-E)} ${n1(-E)} ${n1(2 * E)} ${n1(2 * E)}" font-family="Georgia, 'Times New Roman', serif">`);
+  out.push(`<style>
+    .alt{font-size:${z(fs * 0.55)};fill:#5e4a2c;text-anchor:middle;dominant-baseline:middle;paint-order:stroke;stroke:rgba(255,255,255,.7);stroke-width:${z(fs / 6)}}
+    .sum{font-size:${z(fs * 0.8)};fill:${COLORS.ink};text-anchor:middle;dominant-baseline:middle;paint-order:stroke;stroke:#fff;stroke-width:${z(fs / 4)};stroke-linejoin:round}
+    .leg{font-size:${n1(fs * 0.8)}px;fill:${COLORS.ink};dominant-baseline:middle}
+  </style>`);
+  const img = terrainImage(T, view === 'relief' ? 'relief' : 'slope');
+  if (img) out.push(`<image x="${n1(-E)}" y="${n1(-E)}" width="${n1(2 * E)}" height="${n1(2 * E)}" preserveAspectRatio="none" href="${img}"/>`);
+  else out.push(`<rect x="${n1(-E)}" y="${n1(-E)}" width="${n1(2 * E)}" height="${n1(2 * E)}" fill="${COLORS.land}"/>`);
+
+  // Eau
+  if (city.moat && city.moat.water) out.push(`<path d="${pathD([city.wall])}" fill="none" stroke="${COLORS.water}" stroke-width="${n1(2 * city.moat.outer)}" stroke-opacity=".6" stroke-linejoin="round"/>`);
+  city.rivers.forEach(rv => out.push(`<path d="${lineD(rv.points)}" fill="none" stroke="${COLORS.water}" stroke-width="${n1(rv.w)}" stroke-linecap="round" stroke-linejoin="round"/>`));
+
+  // Courbes de niveau
+  if (!T.flat) {
+    const minor = view === 'relief' ? 5 : 10, major = 25;
+    for (const l of contourLevels(T, minor)) {
+      const segs = contourSegments(T, l), isMajor = l % major === 0;
+      if (!segs.length) continue;
+      out.push(`<path d="${segs.map(sg => lineD(sg)).join('')}" fill="none" stroke="#6b5233" stroke-opacity="${isMajor ? 0.7 : 0.35}" stroke-width="${isMajor ? 1.6 : 0.8}"/>`);
+      if (isMajor && view === 'relief') {
+        // Altitude écrite le long de la courbe, quelques fois
+        const placed = [];
+        segs.forEach((sg, k) => {
+          if (k % 40 !== 7) return;
+          const m = [(sg[0][0] + sg[1][0]) / 2, (sg[0][1] + sg[1][1]) / 2];
+          if (placed.some(p => Math.hypot(p[0] - m[0], p[1] - m[1]) < E * 0.35)) return;
+          placed.push(m);
+          let ang = (Math.atan2(sg[1][1] - sg[0][1], sg[1][0] - sg[0][0]) * 180) / Math.PI;
+          if (ang > 90) ang -= 180; if (ang < -90) ang += 180;
+          out.push(`<text class="alt" transform="translate(${n1(m[0])} ${n1(m[1])}) rotate(${n1(ang)})">${l} m</text>`);
+        });
+      }
+    }
+  }
+
+  drawCliffs(out, city);
+
+  // La ville en surimpression : remparts, rues principales, maisons
+  const houses = [...city.houses.stone, ...city.houses.timber, ...city.houses.thatch];
+  const houseFill = view === 'relief' ? 'rgba(70,58,44,.45)' : 'rgba(40,32,24,.8)';
+  if (houses.length) out.push(`<path d="${pathD(houses)}" fill="${houseFill}"/>`);
+  out.push(`<path d="${city.roads.map(lineD).join('')}" fill="none" stroke="#fff" stroke-opacity=".75" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>`);
+  out.push(`<path d="${pathD([city.wall])}" fill="none" stroke="${COLORS.wall}" stroke-width="4" stroke-linejoin="round"/>`);
+  if (city.citadel) out.push(`<path d="${city.citadel.edges.map(lineD).join('')}" fill="none" stroke="${COLORS.wall}" stroke-width="3"/>`);
+
+  // Sommets cotés
+  for (const sm of T.summits) {
+    out.push(`<path d="M${n1(sm.at[0])} ${n1(sm.at[1] - 7)}L${n1(sm.at[0] + 6)} ${n1(sm.at[1] + 4)}L${n1(sm.at[0] - 6)} ${n1(sm.at[1] + 4)}Z" fill="${COLORS.ink}"/>`);
+    out.push(`<text class="sum" x="${n1(sm.at[0])}" y="${n1(sm.at[1] + fs * 1.2)}">${esc((sm.name ? sm.name + ' · ' : '') + sm.alt + ' m')}</text>`);
+  }
+
+  // Titre
+  const ts = E / 16;
+  out.push(`<text x="0" y="${n1(-E + ts * 1.4)}" font-size="${n1(ts)}" text-anchor="middle" fill="${COLORS.ink}" paint-order="stroke" stroke="#fff" stroke-width="${n1(ts / 5)}" stroke-linejoin="round">${esc(city.name)} — ${view === 'relief' ? 'relief' : 'pentes'}</text>`);
+
+  // Légende
+  const lx = E - E * 0.36, sw = fs * 0.9;
+  if (view === 'relief') {
+    const ly = E - E * 0.13;
+    out.push(`<rect x="${n1(lx - sw * 0.6)}" y="${n1(ly - sw * 1.8)}" width="${n1(E * 0.33)}" height="${n1(sw * 4)}" rx="4" fill="#fff" fill-opacity=".85"/>`);
+    out.push(`<defs><linearGradient id="cmg-alt-grad"><stop offset="0" stop-color="rgb(199,214,168)"/><stop offset=".3" stop-color="rgb(222,222,170)"/><stop offset=".55" stop-color="rgb(226,204,150)"/><stop offset=".8" stop-color="rgb(200,168,124)"/><stop offset="1" stop-color="rgb(176,150,120)"/></linearGradient></defs>`);
+    out.push(`<rect x="${n1(lx)}" y="${n1(ly - sw * 0.5)}" width="${n1(E * 0.22)}" height="${n1(sw)}" fill="url(#cmg-alt-grad)" stroke="${COLORS.buildingLine}" stroke-width="0.6"/>`);
+    out.push(`<text class="leg" x="${n1(lx)}" y="${n1(ly + sw * 1.3)}">${Math.round(T.min)} m</text>`);
+    out.push(`<text class="leg" x="${n1(lx + E * 0.22)}" y="${n1(ly + sw * 1.3)}" text-anchor="end">${Math.round(T.maxAlt)} m</text>`);
+    out.push(`<text class="leg" x="${n1(lx)}" y="${n1(ly - sw * 1.1)}">Altitude${T.flat ? ' (plaine)' : ' — courbes tous les 5 m'}</text>`);
+  } else {
+    const rows = [['rgb(233,237,220)', 'moins de 8 % : facile'], ['rgb(243,227,161)', `8–${T.easy} % : on bâtit`], ['rgb(240,179,107)', `${T.easy}–${T.max} % : terrasses, peu de maisons`],
+      ['rgb(217,105,79)', `${T.max}–45 % : trop raide, vignes`], ['rgb(168,71,58)', 'plus de 45 % : rocher']];
+    const ly = E - E * 0.06 - rows.length * sw * 1.5;
+    out.push(`<rect x="${n1(lx - sw * 0.6)}" y="${n1(ly - sw * 2.2)}" width="${n1(E * 0.35)}" height="${n1(sw * (rows.length * 1.5 + 2.6))}" rx="4" fill="#fff" fill-opacity=".85"/>`);
+    out.push(`<text class="leg" x="${n1(lx)}" y="${n1(ly - sw * 1.1)}">Pente (maisons en noir)</text>`);
+    rows.forEach(([c, t], i) => {
+      const y = ly + i * sw * 1.5 + sw * 0.4;
+      out.push(`<rect x="${n1(lx)}" y="${n1(y - sw / 2)}" width="${n1(sw)}" height="${n1(sw)}" fill="${c}" stroke="${COLORS.buildingLine}" stroke-width="0.6"/>`);
+      out.push(`<text class="leg" x="${n1(lx + sw * 1.5)}" y="${n1(y)}">${t}</text>`);
+    });
+  }
+  // Échelle et nord
+  const sx = -E + E * 0.06, sy = E - E * 0.06, bar = city.R > 300 ? 200 : 100;
+  out.push(`<g stroke="${COLORS.ink}" stroke-width="2" fill="none"><path d="M${n1(sx)} ${n1(sy - 6)}V${n1(sy)}H${n1(sx + bar)}V${n1(sy - 6)}"/></g>`);
+  out.push(`<text x="${n1(sx + bar / 2)}" y="${n1(sy - 12)}" font-size="${n1(E / 45)}" text-anchor="middle" fill="${COLORS.ink}">${bar} m</text>`);
+  out.push('</svg>');
+  return out.join('\n');
+}
+
+function renderSVG(city, options = {}) {
+  if (options.view === 'relief' || options.view === 'pentes') return renderTerrainView(city, options.view);
   const E = city.E;
   const out = [];
   const fs = E / 38;
@@ -113,7 +302,8 @@ function renderSVG(city) {
   fill(city.vineyards, 'url(#cmg-vines)');
 
   // Courbes de niveau sous la ville
-  const contourD = city.contours.map(segs => segs.map(s => lineD(s)).join('')).join('');
+  const contourD = city.terrain && !city.terrain.flat
+    ? contourLevels(city.terrain, 10).map(l => contourSegments(city.terrain, l).map(sg => lineD(sg)).join('')).join('') : '';
   if (contourD) out.push(`<path d="${contourD}" fill="none" stroke="${COLORS.contour}" stroke-opacity=".55" stroke-width="1.3"/>`);
 
   // Fossé en anneau autour du rempart : en eau ou à sec. Tracé comme un trait large centré sur le
@@ -207,6 +397,10 @@ function renderSVG(city) {
 
   // Courbes de niveau par-dessus la ville, très discrètes
   if (contourD) out.push(`<path d="${contourD}" fill="none" stroke="${COLORS.contour}" stroke-opacity=".22" stroke-width="1.1"/>`);
+  drawCliffs(out, city);
+  // Ombrage du relief par-dessus la ville (versants à l'ombre plus sombres) : on voit les collines d'un coup d'œil
+  const shade = city.terrain && !city.terrain.flat ? terrainImage(city.terrain, 'shade') : null;
+  if (shade) out.push(`<image x="${n1(-E)}" y="${n1(-E)}" width="${n1(2 * E)}" height="${n1(2 * E)}" preserveAspectRatio="none" opacity=".55" style="mix-blend-mode:multiply" href="${shade}"/>`);
 
   // Anciennes enceintes : seuls les tronçons encore debout sont dessinés (les démolis sont devenus boulevards)
   const standing = city.oldWalls.filter(w => w.standing);

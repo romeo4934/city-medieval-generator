@@ -49,12 +49,15 @@ for (let i = 0; i < COUNT; i++) {
     plan: i % 5 === 0 ? 'bastide' : 'organique',
     walls: i % 3 === 0 ? 'double' : 'simple',
     twin: i % 7 === 3 ? 'oui' : 'non',
+    ledges: i % 2 ? 'oui' : 'non',
   };
   try {
     const t = Date.now();
     const city = generateCity(opts);
     slowest = Math.max(slowest, Date.now() - t);
     const svg = renderSVG(city);
+    renderSVG(city, { view: 'relief' });
+    renderSVG(city, { view: 'pentes' });
     const sheet = citySheet(city);
 
     // Même graine, même ville

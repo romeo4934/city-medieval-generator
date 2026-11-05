@@ -110,6 +110,21 @@ main {
 }
 #map svg.dragging { cursor: grabbing; }
 
+.views {
+  position: absolute;
+  left: 28px;
+  top: 28px;
+  display: flex;
+  z-index: 2;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .15);
+  border-radius: 4px;
+}
+.views button { flex: none; padding: 6px 12px; border-radius: 0; font-size: 13px; }
+.views button:first-child { border-radius: 4px 0 0 4px; }
+.views button:last-child { border-radius: 0 4px 4px 0; }
+.views button + button { border-left: 0; }
+.views button.on { background: #4a433c; border-color: #4a433c; color: #fff; }
+
 .zoom {
   position: absolute;
   right: 28px;
@@ -132,7 +147,22 @@ main {
   aside { width: 100%; border-right: 0; border-bottom: 1px solid #d6cfbd; }
   main { padding: 8px; }
   #map svg { height: auto; max-height: none; aspect-ratio: 1; }
-  .zoom { right: 16px; bottom: 16px; }
+  .views {
+  position: absolute;
+  left: 28px;
+  top: 28px;
+  display: flex;
+  z-index: 2;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .15);
+  border-radius: 4px;
+}
+.views button { flex: none; padding: 6px 12px; border-radius: 0; font-size: 13px; }
+.views button:first-child { border-radius: 4px 0 0 4px; }
+.views button:last-child { border-radius: 0 4px 4px 0; }
+.views button + button { border-left: 0; }
+.views button.on { background: #4a433c; border-color: #4a433c; color: #fff; }
+
+.zoom { right: 16px; bottom: 16px; }
 }
 
 .sheet { font-size: 13px; line-height: 1.45; }

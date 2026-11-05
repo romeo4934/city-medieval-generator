@@ -5,6 +5,7 @@ const $ = id => document.getElementById(id);
 let current = null;   // ville générée
 let opts = null;      // réglages qui l'ont produite
 let view = null;      // zone visible { x, y, w } (carré, en mètres)
+let mapView = new URLSearchParams(location.hash.slice(1)).get('vue') || 'plan';   // plan, relief ou pentes
 
 function randomSeed() {
   return Math.random().toString(36).slice(2, 8);
@@ -26,6 +27,7 @@ function normalize(o) {
     plan: ['organique', 'bastide', 'auto'].includes(o.plan) ? o.plan : 'organique',
     walls: ['simple', 'double', 'auto'].includes(o.walls) ? o.walls : 'simple',
     twin: ['non', 'oui', 'auto'].includes(o.twin) ? o.twin : 'non',
+    ledges: ['auto', 'oui', 'non'].includes(o.ledges) ? o.ledges : 'auto',
     buildings: Array.isArray(o.buildings) ? o.buildings.filter(id => BUILDINGS.some(b => b.id === id)) : DEFAULT_BUILDINGS.slice(),
     names: Array.isArray(o.names) ? o.names.map(n => String(n || '')) : [],
     cityName: String(o.cityName || ''),
@@ -43,6 +45,7 @@ function readHash() {
     plan: p.get('plan'),
     walls: p.get('enceinte'),
     twin: p.get('haute'),
+    ledges: p.get('ressauts'),
     buildings: p.has('bat') ? p.get('bat').split(',').filter(Boolean) : undefined,
     names: p.has('noms') ? p.get('noms').split('|') : [],
     cityName: p.get('nom'),
@@ -51,9 +54,10 @@ function readHash() {
 
 function writeHash(o) {
   const p = new URLSearchParams({
-    graine: o.seed, taille: o.size, riviere: o.river, relief: o.relief, age: o.age, plan: o.plan, enceinte: o.walls, haute: o.twin, bat: o.buildings.join(','),
+    graine: o.seed, taille: o.size, riviere: o.river, relief: o.relief, age: o.age, plan: o.plan, enceinte: o.walls, haute: o.twin, ressauts: o.ledges, bat: o.buildings.join(','),
   });
   if (o.cityName) p.set('nom', o.cityName);
+  if (mapView !== 'plan') p.set('vue', mapView);
   if (o.names.some(Boolean)) p.set('noms', o.names.join('|'));
   history.replaceState(null, '', '#' + p);
 }
@@ -69,6 +73,7 @@ function fromControls() {
     plan: $('plan').value,
     walls: $('walls').value,
     twin: $('twin').value,
+    ledges: $('ledges').value,
     buildings: [...document.querySelectorAll('#buildings input:checked')].map(i => i.value),
   };
 }
@@ -86,13 +91,14 @@ function build(o) {
   $('plan').value = opts.plan;
   $('walls').value = opts.walls;
   $('twin').value = opts.twin;
+  $('ledges').value = opts.ledges;
   document.querySelectorAll('#buildings input').forEach(i => { i.checked = opts.buildings.includes(i.value); });
   writeHash(opts);
 
   current = generateCity(opts);
   $('cityName').value = opts.cityName;
   $('cityName').placeholder = current.autoName;
-  $('map').innerHTML = renderSVG(current);
+  drawMap();
   if (!view || previousE !== current.E) resetView();
   applyView();
 
@@ -117,6 +123,18 @@ function build(o) {
       <input type="text" data-k="${k}" value="${escAttr(opts.names[k] || '')}" placeholder="${escAttr(d.auto)}">
     </label>`).join('');
 }
+
+// Dessine la ville dans la vue choisie, sans la régénérer
+function drawMap() {
+  $('map').innerHTML = renderSVG(current, { view: mapView });
+  document.querySelectorAll('.views button').forEach(b => b.classList.toggle('on', b.dataset.view === mapView));
+  if (view) applyView();
+}
+document.querySelectorAll('.views button').forEach(b => b.onclick = () => {
+  mapView = b.dataset.view;
+  drawMap();
+  writeHash(opts);
+});
 
 function escAttr(s) {
   return String(s).replace(/[&"<>]/g, c => ({ '&': '&amp;', '"': '&quot;', '<': '&lt;', '>': '&gt;' }[c]));
@@ -250,11 +268,11 @@ $('file').onchange = async () => {
 // ---------- export image (toujours la carte entière) ----------
 
 $('md').onclick = () => download(new Blob([citySheet(current)], { type: 'text/markdown' }), fileBase() + '.md');
-$('svg').onclick = () => download(new Blob([renderSVG(current)], { type: 'image/svg+xml' }), fileBase() + '.svg');
+$('svg').onclick = () => download(new Blob([renderSVG(current, { view: mapView })], { type: 'image/svg+xml' }), fileBase() + (mapView === 'plan' ? '' : '-' + mapView) + '.svg');
 
 $('png').onclick = () => {
   const img = new Image();
-  const url = URL.createObjectURL(new Blob([renderSVG(current)], { type: 'image/svg+xml' }));
+  const url = URL.createObjectURL(new Blob([renderSVG(current, { view: mapView })], { type: 'image/svg+xml' }));
   img.onload = () => {
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 3000;
@@ -272,7 +290,7 @@ $('random').onclick = () => { view = null; build({ ...fromControls(), seed: rand
 $('apply').onclick = () => build(fromControls());
 $('seed').onkeydown = e => { if (e.key === 'Enter') { view = null; build({ ...fromControls(), names: [], cityName: '' }); } };
 $('size').onchange = () => build({ ...fromControls(), names: [] });
-$('river').onchange = $('relief').onchange = $('age').onchange = $('plan').onchange = $('walls').onchange = $('twin').onchange = () => build(fromControls());
+$('river').onchange = $('relief').onchange = $('age').onchange = $('plan').onchange = $('walls').onchange = $('twin').onchange = $('ledges').onchange = () => build(fromControls());
 $('buildings').addEventListener('change', () => build(fromControls()));
 
 window.addEventListener('hashchange', () => build(readHash()));
