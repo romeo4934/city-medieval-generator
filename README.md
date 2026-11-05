@@ -2,7 +2,9 @@
 
 Génère des plans de villes médiévales propres, lisibles et **cohérents**, pour écrire de la fantasy. Chaque élément de la carte a une raison d'être où il est.
 
-**Aucune installation.** Ouvre `index.html` dans un navigateur : pas de dépendance, pas de compilation.
+**En ligne : https://romeo4934.github.io/city-medieval-generator/**
+
+**Aucune installation.** Ouvre `index.html` dans un navigateur : pas de dépendance, pas de compilation. Ou utilise directement la version en ligne ci-dessus.
 
 ## Le modèle
 
