@@ -12,15 +12,17 @@ The interface, every generated name and the city sheet come in **English** (defa
 
 **The terrain is measured.** Elevation is in metres and slope in percent, checked for every plot: people build normally up to 15 %, sparsely and on terraces up to 25 %, never beyond. A hill can rise in **terraces**: flat levels separated by 10–25 m cliffs or retaining walls, which no house straddles, crossed by named **stairs**. On slopes, streets follow the contour lines.
 
-**Factions.** Ask for 2 to 8 rival factions. Each holds a wedge of the city around the **mayor's quarter** in the centre, and the geography helps it hold its ground. Between two territories runs a barrier, a mix of:
-- a **ridge**: a long steep hill line where nobody builds, crossed by a few passes;
-- a **ravine**: a gorge between two cliffs, crossed only by bridges;
-- a **canal**, crossed only by bridges;
-- an **inner wall** with towers, with a gate where each main street passes.
+**Factions.** Ask for 2 to 8 rival factions, plus the Mayor's. Each holds a territory, an irregular region anywhere in the city (the Mayor is not necessarily in the centre), and every territory is walled all round, with a fortified gate wherever a main street passes. Along the borders the ground helps too, in a mix of:
+- a **ridge**: the wall runs along the crest of a steep hill line where nobody builds;
+- a **ravine**: the wall stands on the edge of a gorge between two cliffs, crossed only by bridges;
+- a **canal** at the foot of the wall, crossed only by bridges;
+- or nothing but the wall.
 
-The town grew before the factions dug in: the barriers cut through it, so quarters stay of similar size. Each faction is tinted and outlined in its colour, and can be renamed (the names are kept in the page address). The city sheet says, for each faction, which quarters it holds, what separates it from each neighbour and how many ways cross, and whether it holds the high ground, the citadel or the river.
+On about half the borders, **waste ground** lines both sides of the wall: a no man's land of brush and ruined houses where nobody builds any more. The town grew before the factions walled themselves in, so territories stay of similar size. Each faction is tinted and outlined in its colour, and can be renamed (the names are kept in the page address). The city sheet says, for each faction, which quarters it holds, what lies along each border, how many ways through, and whether it holds the high ground, the citadel, the market or the river.
 
-**The Mayor's Esplanade.** In the centre, a terrace 11–17 m high on top of a cliff, with a tribune at its edge, overlooks the market square: the mayor speaks, the crowd listens from below. Two flights of steps climb from the square. It is also available without factions (Landmarks).
+**Cables.** Cables stretched between towers carry people, goods and messages over the walls. Each faction has a station on its highest point, and an **official line** runs from it to the Mayor's Esplanade (double line, with a car); **secret lines** (red dashes) join two neighbouring factions from discreet tower-houses on either side of the border. The sheet gives each line its length and its height above the roofs; a pylon holds it up where it would graze a hill.
+
+**The Mayor's Esplanade.** In the Mayor's territory, a terrace 11–17 m high on top of a cliff, with a tribune at its edge, overlooks Speakers' Square: the mayor speaks, the crowd listens from below. Two flights of steps climb from the square. It is also available without factions (Landmarks), then above the market.
 
 **Sight.** The **Sight** view shows what a seer can see from any point: click the map to move them, tick "from a tower" to raise them 20 m. Terrain, houses (9 m), landmarks and walls block the view; hidden ground is darkened, with distance rings, and the panel lists which faction quarters can be seen, and how much of each. From the street, a seer sees a few streets; from the esplanade or a tower, they look over the borders.
 

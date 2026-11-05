@@ -212,10 +212,7 @@ function show(city) {
   $('factionNames').innerHTML = facs.map(f => `
     <label class="district faction"><span class="swatch" style="background:${f.color}"></span>
       <input type="text" data-f="${f.index}" value="${escAttr(opts.factionNames[f.index] || '')}" placeholder="${escAttr(f.auto)}">
-    </label>`).join('') + (current.centre ? `
-    <label class="district faction"><span class="swatch" style="background:#d8cfb8"></span>
-      <input type="text" data-f="${current.factionCount}" value="${escAttr(opts.factionNames[current.factionCount] || '')}" placeholder="${escAttr(current.centre.auto)}">
-    </label>` : '');
+    </label>`).join('');
   $('districts').innerHTML = current.districts.map((d, k) => `
     <label class="district">
       <input type="text" data-k="${k}" value="${escAttr(opts.names[k] || '')}" placeholder="${escAttr(d.auto)}">

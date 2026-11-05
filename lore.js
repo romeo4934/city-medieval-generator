@@ -121,26 +121,36 @@ function citySheetFr(city) {
   // --- Factions ---
   if ((city.factions || []).length) {
     L.push('## Factions', '');
-    const BAR = { ridge: ['une crête escarpée où personne ne bâtit', 'col', 'cols'], ravine: ['un ravin entre deux falaises', 'pont', 'ponts'],
-      water: ['un canal', 'pont', 'ponts'], wall: ['un mur intérieur flanqué de tours', 'porte', 'portes'] };
+    L.push("Chaque territoire est muré tout autour, avec une porte fortifiée partout où passe une grande rue ; les petites rues sont murées.", '');
+    const BAR = { ridge: "son mur suit la crête d'une arête escarpée", ravine: "son mur se dresse au bord d'un ravin entre deux falaises",
+      water: 'un canal coule au pied de son mur', wall: 'rien que le mur' };
     const nameOf = i => (city.factions.find(f => f.index === i) || {}).name || 'sa voisine';
-    if (city.centre) {
-      const e = city.esplanade;
-      L.push(`- **${city.centre.name}** (le centre, terrain neutre) : la place du marché${e ? `, dominée par ${e.name.charAt(0).toLowerCase() + e.name.slice(1)}, une terrasse haute de ${e.height} m au sommet d'une falaise. Le maire parle depuis la tribune, au bord ; la foule se rassemble en bas sur la place pour l'écouter, et chacun peut venir, quelles que soient ses couleurs. Deux escaliers montent de la place` : ''}.`);
-    }
+    // de / à + article : « des Loyalistes », « au Quartier du Maire »
+    const deFr = t => t.replace(/^Les /, 'des ').replace(/^Le /, 'du ').replace(/^La /, 'de la ').replace(/^L'/, "de l'").replace(/^(?!des |du |de )/, 'de ');
+    const aFr = t => t.replace(/^Les /, 'aux ').replace(/^Le /, 'au ').replace(/^La /, 'à la ').replace(/^L'/, "à l'").replace(/^(?!aux |au |à )/, 'à ');
     for (const f of city.factions) {
-      const parts = f.borders.map(b => {
-        const [what, one, many] = BAR[b.type];
-        return `vers ${nameOf(b.with)}, ${what}, ${b.ways ? `franchi par ${b.ways === 1 ? 'un seul ' + one : b.ways + ' ' + many}` : 'qu\'aucune grande rue ne franchit'}`;
-      });
+      const parts = f.borders.map(b => `vers ${nameOf(b.with)}, ${BAR[b.type]}${b.waste ? ', avec des terrains vagues de part et d\'autre' : ''}, ${b.ways ? `${b.ways} passage${b.ways > 1 ? 's' : ''}` : 'et aucun passage'}`);
       const extra = [];
       if (f.highest) extra.push('elle tient le terrain le plus haut de toutes les factions');
-      if (f.lowest) extra.push('elle est la plus basse, et ses rues sont surveillées d\'en haut');
+      if (f.lowest) extra.push("elle est la plus basse, et ses rues sont surveillées d'en haut");
       if (f.citadel) extra.push('la citadelle est entre ses mains');
       if (f.river) extra.push('elle contrôle un tronçon de la rivière');
-      L.push(`- **${f.name}**${f.districts.length ? ` (${listFr(f.districts)})` : ''} : ${parts.join(' ; ')}.${extra.length ? ' ' + cap(listFr(extra)) + '.' : ''}`);
+      if (f.market) extra.push('le grand marché est dans ses murs');
+      const e = city.esplanade;
+      const mayor = f.mayor && e ? ` C'est ici que se dresse ${e.name.charAt(0).toLowerCase() + e.name.slice(1)} : une terrasse haute de ${e.height} m au sommet d'une falaise. Le maire parle depuis la tribune, au bord ; la foule se rassemble en bas, sur la ${(e.square || 'place').replace(/^Place /, 'place ')}, pour l'écouter ; les jours de discours, les portes s'ouvrent à tous, quelles que soient leurs couleurs.` : '';
+      L.push(`- **${f.name}**${f.districts.length ? ` (${listFr(f.districts)})` : ''} : ${parts.join(' ; ')}.${extra.length ? ' ' + cap(listFr(extra)) + '.' : ''}${mayor}`);
     }
-    L.push('', 'Depuis la rue, personne ne voit dans le quartier d\'une autre faction : les crêtes, les murs et les maisons elles-mêmes cachent la vue. Seule une hauteur permet de regarder par-dessus les frontières (la vue Regard permet de le vérifier).', '');
+    L.push('', "Depuis la rue, personne ne voit dans le quartier d'une autre faction : les murs, les crêtes et les maisons elles-mêmes cachent la vue. Seule une hauteur (une tour, une station de câble, l'esplanade) permet de regarder par-dessus les frontières (la vue Regard permet de le vérifier).", '');
+    const cables = city.cables || [];
+    if (cables.length) {
+      L.push('## Câbles', '');
+      L.push('Des câbles tendus entre des tours font passer gens, marchandises et messages par-dessus les murs, en nacelle ou au crochet.', '');
+      for (const k of cables) {
+        const [a, b] = k.factions.map(nameOf);
+        L.push(`- **${k.name}**${k.secret ? ' (secret)' : ''} : ${k.secret ? `entre ${a.replace(/^L/, 'l')} et ${b.replace(/^L/, 'l')}, depuis deux maisons-tours discrètes de part et d'autre de la frontière ; seules ces deux factions le connaissent` : `ligne officielle ${deFr(a)} ${aFr(b)}, depuis la tour de son point le plus haut`}. ${k.length} m de long, ${k.clearance > 0 ? `au moins ${k.clearance} m au-dessus des toits` : k.pylons.length ? 'soutenue par un pylône là où elle frôlerait le sol' : 'rasant les toits'}.`);
+      }
+      L.push('');
+    }
   }
 
   // --- Portes et routes ---

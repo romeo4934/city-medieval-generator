@@ -356,7 +356,7 @@ function generateCity(opts) {
     // Pente sans les frontières des factions : la ville a grandi avant que les factions ne s'y retranchent
     c.steepBase = (F.K || T0) ? Math.hypot(elevBase(c.site[0] + 3, c.site[1]) - elevBase(c.site[0] - 3, c.site[1]), elevBase(c.site[0], c.site[1] + 3) - elevBase(c.site[0], c.site[1] - 3)) / 6 * reliefHeight * 100 > SLOPE_MAX : c.steep;
     c.top = hilly && !c.steep && hillHeight(0, ...c.site) > 0.8;   // plateau de la colline principale
-    c.faction = F.factionAt(c.site);                               // -1 : centre neutre
+    c.faction = F.factionAt(c.site);                               // -1 : pas de factions
     c.terrace = !!T0 && F.terraceLevel(c.site) > 0.4;              // le haut de l'esplanade
   });
 
@@ -463,7 +463,7 @@ function generateCity(opts) {
   const plaza = cells.filter(c => flat(c) && !touchesRiver(c) && !onUpperHill(c))
     .reduce((m, c) => {
       // Avec l'esplanade, le marché est au pied de sa falaise : la foule écoute d'en bas
-      const foot = T0 ? [T0.c[0] + T0.front[0] * (T0.r + cellR * 0.9), T0.c[1] + T0.front[1] * (T0.r + cellR * 0.9)] : null;
+      const foot = T0 && !F.K ? T0.foot : null;   // sans factions, le marché est la place de la foule
       const s = c2 => (foot ? dist(c2.site, foot) : Math.hypot(...c2.site) + (rivers.length ? 0.6 * Math.max(0, riverDist(c2.site) - cellR) : 0));
       return !m || s(c) < s(m) ? c : m;
     }, null) || cells[0];
@@ -863,6 +863,9 @@ function generateCity(opts) {
     }
   }
 
+  // Terrains vagues : le long de certaines frontières, plus personne n'ose bâtir (ruines, broussailles)
+  cells.forEach(c => { c.waste = !!F.K && c.inner && !c.citadel && !c.building && c.type !== 'plaza' && !c.terrace && F.isWaste(c.site); });
+
   // ================= 11. Quartiers (chacun dans une seule enceinte) =================
   const rD = rng('quartiers|' + opts.size);
   const town = cells.filter(c => c.inner && !c.citadel);
@@ -1027,7 +1030,7 @@ function generateCity(opts) {
     const ax = norm([g0[0] - plaza.site[0], g0[1] - plaza.site[1]]);
     const w = 30 + N * 0.35, h = w * between(rMk, [1.15, 1.5]);
     marketPoly = rect(plaza.site, ax, h, w).map(p => [p[0] + (rMk() - 0.5) * 8, p[1] + (rMk() - 0.5) * 8]);
-    if (T0) {
+    if (T0 && !F.K) {
       // La place de la foule, au pied de la falaise de l'esplanade, en long le long de la falaise
       const w2 = Math.min(w, 34 + cellR * 0.5), h2 = Math.max(w2 * 1.3, T0.r * 2);
       const c0 = [T0.c[0] + T0.front[0] * (T0.r + 6 + w2 / 2), T0.c[1] + T0.front[1] * (T0.r + 6 + w2 / 2)];
@@ -1035,6 +1038,14 @@ function generateCity(opts) {
     }
   }
   reserves.push({ poly: marketPoly, kind: 'market', frontage: true });
+  // Avec des factions, l'esplanade est chez le maire, où qu'il soit : sa propre place au pied de la falaise
+  let crowdPoly = null;
+  if (T0 && F.K) {
+    const w2 = 30 + cellR * 0.45, h2 = Math.max(w2 * 1.3, T0.r * 2);
+    const c0 = [T0.c[0] + T0.front[0] * (T0.r + 6 + w2 / 2), T0.c[1] + T0.front[1] * (T0.r + 6 + w2 / 2)];
+    crowdPoly = rect(c0, [-T0.front[1], T0.front[0]], h2, w2);
+    reserves.push({ poly: crowdPoly, kind: 'market', frontage: true });
+  }
   // L'esplanade : le haut de la terrasse reste une grande dalle vide, sans rue ni maison
   const esplanadePoly = T0 ? Array.from({ length: 24 }, (_, k) => [T0.c[0] + Math.cos(k * Math.PI / 12) * T0.r * 0.95, T0.c[1] + Math.sin(k * Math.PI / 12) * T0.r * 0.95]) : null;
   if (esplanadePoly) reserves.push({ poly: esplanadePoly, kind: 'esplanade', frontage: false });
@@ -1254,14 +1265,15 @@ function generateCity(opts) {
         if (seen.has(key)) continue;
         seen.add(key);
         const o = (edgeCells.get(key) || []).map(ci => cells[ci]).find(x => x !== c);
-        if (!o || !(o.inner || o.citadel) || o.faction < 0 || o.faction === c.faction) continue;
-        const m = [(verts[a][0] + verts[b][0]) / 2, (verts[a][1] + verts[b][1]) / 2], bd = F.borderNear(m);
-        if (bd && bd.type === 'wall') innerWalls.push({ a: verts[a], b: verts[b], border: bd.k });
+        if (!o || !(o.inner || o.citadel) || o.faction < 0 || o.faction === c.faction || riverEdgeW.has(key)) continue;
+        const bd = F.borders.find(x => (x.a === c.faction && x.b === o.faction) || (x.b === c.faction && x.a === o.faction))
+          || F.borderNear([(verts[a][0] + verts[b][0]) / 2, (verts[a][1] + verts[b][1]) / 2]);
+        if (bd) innerWalls.push({ a: verts[a], b: verts[b], border: bd.k });   // chaque territoire est muré tout autour
       }
     }
     innerWalls.forEach(w => addSeg({ a: w.a, b: w.b, half: 4, kind: 'wall' }));
     for (const bd of F.borders) if (bd.type === 'water') {
-      for (const run of runsAlongWater(F.axis(bd))) {
+      for (const run of F.lines(bd, 0).flatMap(runsAlongWater)) {
         borderCanals.push({ points: run, w: bd.w, border: bd.k });
         for (let i = 0; i + 1 < run.length; i++) addSeg({ a: run[i], b: run[i + 1], half: bd.w / 2 + 1.5, kind: 'river' });
       }
@@ -1274,7 +1286,7 @@ function generateCity(opts) {
   {
     const rOL = rng('terres|' + opts.size);
     const lastRing0 = ringSets.length - 1;
-    const outer = cells.filter(c => c.inner && !c.citadel && !c.building && c.type !== 'plaza' && !c.terrace && !c.steep
+    const outer = cells.filter(c => c.inner && !c.citadel && !c.building && c.type !== 'plaza' && !c.terrace && !c.steep && !c.waste
       && (age === 1 ? dist(c.site, plaza.site) > 0.6 * R : c.ring === lastRing0));
     const target = Math.round(outer.length * (age === 1 ? 0.1 : 0.2));
     const mainSegs = streets.filter(st => st.cls === 'main' || st.cls === 'road' || st.kind === 'citadel').flatMap(st => st.points.slice(1).map((p, i) => [st.points[i], p]));
@@ -1439,7 +1451,7 @@ function generateCity(opts) {
       for (let y = Math.min(...wy); y <= Math.max(...wy); y += 20) for (let x = Math.min(...wx); x <= Math.max(...wx); x += 20) {
         const g = [x, y];
         const dg = domainAt(g);
-        if (dg === 'out' || !okGround(g, dg) || slopeAt(g) > SLOPE_EASY) continue;
+        if (dg === 'out' || !okGround(g, dg) || slopeAt(g) > SLOPE_EASY || cellAt(g).waste) continue;
         if ([...near(g, 36)].some(sg => sg.kind === 'street' && Geo.distToSegment(g, sg.a, sg.b) < 36)) continue;
         if (gaps.some(o => dist(o, g) < 70)) continue;
         gaps.push(g);
@@ -1550,7 +1562,7 @@ function generateCity(opts) {
     roofs: { slate: [], tile: [], thatch: [] },
     ridges: [], annexes: [], lotLines: [], fences: [], trees: [],
     terraces: [], vineyards: [], fieldStrips: [[], [], []], meadows: [],
-    plaza: [], stalls: [], wells: [], specials: [], labels: [],
+    plaza: [], stalls: [], wells: [], specials: [], labels: [], ruins: [],
     plan: bastide ? 'bastide' : 'organique', twin, doubleWall, arcades: [], halls: [],
     cliffs: cliffs.map(cl => ({ points: cl.points, center: cl.center, drop: cl.drop, side: cl.side, kind: cl.kind })), stairs: [],
     canals: waterworks.canals, mills: waterworks.mills, islands: waterworks.islands, outskirts: [],
@@ -1715,6 +1727,14 @@ function generateCity(opts) {
       if (opt.suburb && wallSegs.some(([a, b]) => Geo.distToSegment(Fm, a, b) < moat.outer + 5)) continue;
       const sl = slopeAt(Fm);
       if (sl > SLOPE_MAX) continue;
+      if (dom !== 'out' && cellAt(Fm).waste) {
+        // Terrain vague : parfois les restes d'une maison abandonnée
+        if (rand() < 0.22) {
+          const rd = Math.min(rowDepth, 10), ruin = [F0, F1, [F1[0] + n[0] * rd, F1[1] + n[1] * rd], [F0[0] + n[0] * rd, F0[1] + n[1] * rd]];
+          if (!blocked(ruin) && !clashB(ruin) && !onCliff(ruin)) { placeB(ruin); city.ruins.push(ruin); }
+        }
+        continue;
+      }
       const onSlope = sl > SLOPE_EASY;
       const [reach, what] = reachAlong([Fm[0] + n[0] * 0.2, Fm[1] + n[1] * 0.2], n, 70);
       const lotDepth = Math.min(what === 'street' ? reach / 2 : reach - 1, 42);
@@ -1836,6 +1856,7 @@ function generateCity(opts) {
   {
     const rand = rng('marche-dessin|' + opts.size);
     city.plaza.push(marketPoly);
+    if (crowdPoly) city.plaza.push(crowdPoly);
     const [ctr, ir] = inradius(marketPoly);
     if (bastide) {
       const arc = Geo.inset(marketPoly, 3.5);
@@ -1923,23 +1944,25 @@ function generateCity(opts) {
   city.innerGates = [];
   city.borderCanals = borderCanals.map(c => ({ points: c.points, w: c.w }));
   city.ravines = [];
+  city.waste = cells.filter(c => c.waste).map(c => c.ids.map(id => verts[id]));
+  city.cables = [];
   if (F.K) {
     const rF = rng('factions-noms');
     const pool = X.factions.names.slice();
     const custom = opts.factionNames || [];
     const big = streets.filter(st => st.cls === 'main' || st.cls === 'road');
-    const crossings = F.borders.map(() => []);   // passages par frontière : portes, ponts, cols
-    const addCross = (bd, at, kind) => { if (!crossings[bd.k].some(o => dist(o.at, at) < 15)) crossings[bd.k].push({ at, kind }); };
-    // Portes des murs intérieurs : là où une grande rue passe le mur
+    const crossings = F.borders.map(() => []);   // passages par frontière : portes, ponts
+    const addCross = (bd, at, kind) => { if (bd && !crossings[bd.k].some(o => dist(o.at, at) < 15)) crossings[bd.k].push({ at, kind }); };
+    // Portes : là où une grande rue passe le mur d'un territoire
     for (const w of innerWalls) for (const st of big) for (let i = 0; i + 1 < st.points.length; i++) {
       const h = segHit(st.points[i], st.points[i + 1], w.a, w.b);
       if (h && !city.innerGates.some(g => dist(g.at, h.at) < 14)) { city.innerGates.push({ at: h.at, prev: w.a, next: w.b }); addCross(F.borders[w.border], h.at, 'gate'); }
     }
-    // Ponts sur les canaux et les ravins
+    // Ponts sur les canaux et les ravins des frontières
     for (const bd of F.borders) {
       const lines = bd.type === 'water' ? borderCanals.filter(c => c.border === bd.k).map(c => c.points)
-        : bd.type === 'ravine' ? [F.curve(bd, 0, F.rIn + 0.08 * R, 1.35 * R, 6)] : [];
-      if (bd.type === 'ravine') city.ravines.push({ points: lines[0], w: 2 * bd.floor, border: bd.k });
+        : bd.type === 'ravine' ? F.lines(bd, 0).map(P => P.filter(p => Math.hypot(p[0], p[1]) < 1.35 * R)).filter(P => P.length > 1) : [];
+      if (bd.type === 'ravine') lines.forEach(P => city.ravines.push({ points: P, w: 2 * bd.floor, border: bd.k }));
       const len = bd.type === 'water' ? bd.w + 8 : 2 * (bd.floor + bd.edge) + 6;
       for (const P of lines) for (let j = 0; j + 1 < P.length; j++) for (const st of big) for (let i = 0; i + 1 < st.points.length; i++) {
         const a = st.points[i], b = st.points[i + 1], h = segHit(a, b, P[j], P[j + 1]);
@@ -1947,39 +1970,87 @@ function generateCity(opts) {
         city.bridges.push({ x: h.at[0], y: h.at[1], angle: (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI, length: len, inhabited: false });
         if (domainAt(h.at) !== 'out') addCross(bd, h.at, 'bridge');
       }
-      // Crête : les cols sont les grandes rues qui la franchissent en ville
-      if (bd.type === 'ridge') for (const st of big) for (let i = 0; i + 1 < st.points.length; i++) {
-        const p = st.points[i], q = st.points[i + 1];
-        if (domainAt(p) === 'out') continue;
-        const fp = F.factionAt(p), fq = F.factionAt(q);
-        if (fp >= 0 && fq >= 0 && fp !== fq && F.borderNear(p) === bd) addCross(bd, p, 'pass');
-      }
+    }
+    // Ponts sur la rivière entre deux territoires
+    for (const br of city.bridges) {
+      const t = [Math.cos(br.angle * Math.PI / 180), Math.sin(br.angle * Math.PI / 180)], o = br.length / 2 + 6;
+      const p = [br.x - t[0] * o, br.y - t[1] * o], q = [br.x + t[0] * o, br.y + t[1] * o];
+      if (domainAt(p) === 'out' || domainAt(q) === 'out') continue;
+      const fp = F.factionAt(p), fq = F.factionAt(q);
+      if (fp !== fq) addCross(F.borders.find(x => (x.a === fp && x.b === fq) || (x.a === fq && x.b === fp)), [br.x, br.y], 'bridge');
     }
     const PALETTE = ['#b5523b', '#3f6e9e', '#5b8a3c', '#8a4f9e', '#c29a2e', '#2f8c86', '#9e6a3f', '#5f6470'];
     for (let k = 0; k < F.K; k++) {
       const own = cells.filter(c => (c.inner || c.citadel) && c.faction === k);
       if (!own.length) continue;
-      const auto = pool.splice(Math.floor(rF() * pool.length), 1)[0] || X.factions.fallback(k + 1);
+      const isMayor = k === F.mayor;
+      const auto = isMayor ? X.factions.centre : pool.splice(Math.floor(rF() * pool.length), 1)[0] || X.factions.fallback(k + 1);
       const mid = [own.reduce((a, c) => a + c.site[0], 0) / own.length, own.reduce((a, c) => a + c.site[1], 0) / own.length];
-      const lab = own.filter(c => !c.steep).reduce((m, c) => (!m || dist(c.site, mid) < dist(m.site, mid) ? c : m), null) || own[0];
+      const lab = own.filter(c => !c.steep && !c.waste).reduce((m, c) => (!m || dist(c.site, mid) < dist(m.site, mid) ? c : m), null) || own[0];
       const alts = own.map(c => altitude(...c.site)), meanAlt = alts.reduce((a, v) => a + v, 0) / alts.length;
-      const sides = [F.borders[k], F.borders[(k + 1) % F.K]].filter((b, i, l) => l.indexOf(b) === i);
       city.factions.push({
-        index: k, name: (custom[k] || '').trim() || auto, auto, color: PALETTE[k % PALETTE.length],
-        polys: own.map(c => c.ids.map(id => verts[id])), at: lab.site,
+        index: k, mayor: isMayor, name: (custom[k] || '').trim() || auto, auto, color: isMayor ? '#7d6a45' : PALETTE[k % PALETTE.length],
+        polys: own.map(c => c.ids.map(id => verts[id])), at: lab.site, cells: own,
         outline: own.flatMap(c => cellEdges(c).filter(([a, b]) => !(edgeCells.get(ek(a, b)) || []).some(ci => ci !== c.index && (cells[ci].inner || cells[ci].citadel) && cells[ci].faction === k)).map(([a, b]) => [verts[a], verts[b]])),
-        meanAlt: Math.round(meanAlt), citadel: own.some(c => c.citadel), river: own.some(c => touchesRiver(c)),
+        meanAlt: Math.round(meanAlt), citadel: own.some(c => c.citadel), river: own.some(c => touchesRiver(c)), market: own.some(c => c.type === 'plaza'),
         districts: [...new Set(own.map(c => c.district).filter(d => d !== undefined && d >= 0))].map(d => city.districts[d] && city.districts[d].name).filter(Boolean),
-        borders: sides.map(b => ({ type: b.type, ways: crossings[b.k].length, with: b.k === k ? (k - 1 + F.K) % F.K : (k + 1) % F.K })),
+        borders: F.borders.filter(b => b.a === k || b.b === k).map(b => ({ type: b.type, ways: crossings[b.k].length, with: b.a === k ? b.b : b.a, waste: b.waste > 0 })),
       });
     }
-    // Le centre : le quartier du maire, neutre, avec le marché et l'esplanade
-    city.centre = { name: (custom[F.K] || '').trim() || X.factions.centre, auto: X.factions.centre, at: plaza.site };
     const altAll = city.factions.map(f => f.meanAlt);
     city.factions.forEach(f => { f.highest = f.meanAlt === Math.max(...altAll); f.lowest = f.meanAlt === Math.min(...altAll); });
+
+    // Câbles : chaque faction a sa station sur son point le plus haut (une tour) ; les lignes officielles
+    // montent toutes à l'esplanade du maire ; des lignes secrètes relient deux factions voisines.
+    const rK = rng('cables');
+    const TOWER = 24;
+    const station = (f, near) => {
+      let pool2 = f.cells.filter(c => c.inner && !c.steep && !c.waste && !c.terrace);
+      if (near) pool2 = pool2.filter(c => dist(c.site, near) < 2.5 * cellR);
+      if (!pool2.length) return null;
+      const best = near ? pool2[Math.floor(rK() * pool2.length)] : pool2.reduce((m, c) => (altitude(...c.site) > altitude(...m.site) ? c : m));
+      return { at: best.site, top: altitude(...best.site) + (near ? 16 : TOWER), faction: f.index };
+    };
+    const span = (A, B) => {
+      // Hauteur du câble au-dessus des toits, le long de la ligne ; un pylône là où il frôlerait le relief
+      let low = Infinity, worst = null;
+      const L = dist(A.at, B.at);
+      for (let s2 = 0.05; s2 < 0.95; s2 += 10 / Math.max(L, 10)) {
+        const p = [A.at[0] + (B.at[0] - A.at[0]) * s2, A.at[1] + (B.at[1] - A.at[1]) * s2];
+        const clear = A.top + (B.top - A.top) * s2 - (altitude(...p) + 9);
+        if (clear < low) { low = clear; worst = p; }
+      }
+      return { length: Math.round(L), clearance: Math.round(low), worst };
+    };
+    const mayorF = city.factions.find(f => f.mayor);
+    const hub = T0 ? { at: [T0.c[0] - T0.front[0] * T0.r * 0.5, T0.c[1] - T0.front[1] * T0.r * 0.5], top: altitude(T0.c[0], T0.c[1]) + 18, faction: F.mayor } : mayorF && station(mayorF);
+    const officialNames = X.cables.official.slice(), secretNames = X.cables.secret.slice();
+    const takeName = (l, fb) => l.splice(Math.floor(rK() * l.length), 1)[0] || fb;
+    if (hub) for (const f of city.factions) {
+      if (f.mayor) continue;
+      const st = station(f);
+      if (!st) continue;
+      const sp = span(st, hub), pylons = sp.clearance < 8 && sp.worst ? [sp.worst] : [];
+      city.cables.push({ secret: false, from: st, to: hub, factions: [f.index, F.mayor], name: takeName(officialNames, X.cables.officialFallback(f.name)), ...sp, pylons });
+    }
+    for (const b of F.borders) {
+      if (b.a === F.mayor || b.b === F.mayor || rK() > 0.55) continue;
+      const fa = city.factions.find(f => f.index === b.a), fb = city.factions.find(f => f.index === b.b);
+      if (!fa || !fb) continue;
+      // Près de la frontière, de part et d'autre : deux maisons-tours discrètes
+      const line = F.lines(b, 0).flat().filter(p => domainAt(p) !== 'out');
+      if (!line.length) continue;
+      const mid = line[Math.floor(rK() * line.length)];
+      const A = station(fa, mid), B = station(fb, mid);
+      if (!A || !B || dist(A.at, B.at) < 40) continue;
+      city.cables.push({ secret: true, from: A, to: B, factions: [b.a, b.b], name: takeName(secretNames, X.cables.secretFallback), ...span(A, B), pylons: [] });
+    }
+    city.factions.forEach(f => { delete f.cells; });
   }
   if (T0) {
-    city.esplanade = { c: T0.c, r: T0.r * 0.95, front: T0.front, height: Math.round(T0.H), name: X.factions.esplanade, poly: esplanadePoly };
+    city.esplanade = { c: T0.c, r: T0.r * 0.95, front: T0.front, height: Math.round(T0.H), name: X.factions.esplanade, poly: esplanadePoly,
+      faction: F.K ? F.mayor : -1, square: crowdPoly ? X.factions.crowdSquare : null };
+    if (crowdPoly) city.labels.push({ at: Geo.centroid(crowdPoly), text: X.factions.crowdSquare, small: true });
     // Deux escaliers montent de la place à l'esplanade, aux deux bouts de la falaise
     const a0 = Math.atan2(T0.front[1], T0.front[0]);
     for (const s2 of [-0.7, 0.7]) {

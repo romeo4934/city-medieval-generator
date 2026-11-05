@@ -81,7 +81,12 @@ const TEXT = {
     factions: {
       names: ['The Loyalists', "The Assassins' Guild", 'The Theatre Folk', 'The Merchant Houses', "The Purifier's Flock", 'The Grey Hoods', 'The Iron Brotherhood',
         'The House of the Raven', 'The Salt Guild', 'The Black Lanterns', 'The Bell Ringers', 'The Old Families'],
-      fallback: k => `Faction ${k}`, centre: "The Mayor's Quarter", esplanade: "The Mayor's Esplanade", esplanadeStairs: 'Esplanade Steps',
+      fallback: k => `Faction ${k}`, centre: "The Mayor's Quarter", esplanade: "The Mayor's Esplanade", esplanadeStairs: 'Esplanade Steps', crowdSquare: "Speakers' Square",
+    },
+    cables: {
+      official: ['The Gull Line', 'The Bell Line', 'The Crown Line', 'The Lantern Line', 'The Heron Line', 'The Kite Line', 'The Swallow Line', 'The Harbour Line', 'The Chain Line'],
+      secret: ['The Black Thread', 'The Whisper Wire', 'The Rat Line', 'The Moth Line', 'The Silent Cable', 'The Night Rope', 'The Spider Line', 'The Smugglers\' Wire'],
+      officialFallback: f => `The ${f} Line`, secretFallback: 'A nameless wire',
     },
     why: { oldTown: 'no room in the old town', wall: 'no room on the walls', room: 'no room', gate: 'no room near the gates', bank: 'no room on the riverbank',
       noRiver: 'no river', outside: 'no room outside the walls', freeBank: 'no free riverbank' },
@@ -173,7 +178,13 @@ const TEXT = {
     factions: {
       names: ['Les Loyalistes', 'La Guilde des Assassins', 'Les Gens du Théâtre', 'Les Maisons Marchandes', 'Le Troupeau du Purificateur', 'Les Capuches Grises',
         'La Confrérie de Fer', 'La Maison du Corbeau', 'La Guilde du Sel', 'Les Lanternes Noires', 'Les Sonneurs', 'Les Vieilles Familles'],
-      fallback: k => `Faction ${k}`, centre: 'Le Quartier du Maire', esplanade: "L'Esplanade du Maire", esplanadeStairs: "Degrés de l'Esplanade",
+      fallback: k => `Faction ${k}`, centre: 'Le Quartier du Maire', esplanade: "L'Esplanade du Maire", esplanadeStairs: "Degrés de l'Esplanade", crowdSquare: 'Place des Harangues',
+    },
+    cables: {
+      official: ['La Ligne des Mouettes', 'La Ligne de la Cloche', 'La Ligne de la Couronne', 'La Ligne des Lanternes', 'La Ligne du Héron', 'La Ligne du Cerf-Volant',
+        'La Ligne des Hirondelles', 'La Ligne du Port', 'La Ligne de la Chaîne'],
+      secret: ['Le Fil Noir', 'Le Câble Murmurant', 'La Ligne des Rats', 'La Ligne des Phalènes', 'Le Câble Muet', 'La Corde de Nuit', "Le Fil de l'Araignée", 'Le Câble des Contrebandiers'],
+      officialFallback: f => `La Ligne de ${f}`, secretFallback: 'Un câble sans nom',
     },
     why: { oldTown: 'pas de place dans la vieille ville', wall: 'pas de place sur les remparts', room: 'pas de place', gate: 'pas de place près des portes', bank: "pas de place au bord de l'eau",
       noRiver: 'pas de rivière', outside: 'pas de place hors les murs', freeBank: 'pas de rive libre' },

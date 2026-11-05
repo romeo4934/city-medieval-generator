@@ -106,26 +106,33 @@ function citySheetEn(city) {
   // --- Factions ---
   if ((city.factions || []).length) {
     L.push('## Factions', '');
-    const BAR = { ridge: ['a steep ridge where nobody builds', 'pass', 'passes'], ravine: ['a ravine between two cliffs', 'bridge', 'bridges'],
-      water: ['a canal', 'bridge', 'bridges'], wall: ['an inner wall with towers', 'gate', 'gates'] };
+    L.push('Every territory is walled all round, with a fortified gate wherever a main street passes; the smaller streets are walled up.', '');
+    const BAR = { ridge: 'its wall runs along the crest of a steep ridge', ravine: 'its wall stands on the edge of a ravine between two cliffs',
+      water: 'a canal runs at the foot of its wall', wall: 'nothing but the wall' };
     const nameOf = i => (city.factions.find(f => f.index === i) || {}).name || 'its neighbour';
-    if (city.centre) {
-      const e = city.esplanade;
-      L.push(`- **${city.centre.name}** (the centre, neutral ground): the market square${e ? `, overlooked by ${e.name}, a terrace ${e.height} m high on top of a cliff. The mayor speaks from the tribune at its edge; the crowd gathers in the square below to listen, and everyone can come, whatever their colours. Two flights of steps climb from the square` : ''}.`);
-    }
     for (const f of city.factions) {
-      const parts = f.borders.map(b => {
-        const [what, one, many] = BAR[b.type];
-        return `towards ${nameOf(b.with)}, ${what}, ${b.ways ? `crossed by ${b.ways === 1 ? 'a single ' + one : b.ways + ' ' + many}` : 'that no main street crosses'}`;
-      });
+      const parts = f.borders.map(b => `towards ${nameOf(b.with)}, ${BAR[b.type]}${b.waste ? ', with waste ground on both sides' : ''}, ${b.ways ? `${b.ways} way${b.ways > 1 ? 's' : ''} through` : 'and no way through'}`);
       const extra = [];
       if (f.highest) extra.push('it holds the highest ground of all the factions');
       if (f.lowest) extra.push('it lies lowest, and its streets are watched from above');
       if (f.citadel) extra.push('the citadel is in its hands');
       if (f.river) extra.push('it controls a stretch of the river');
-      L.push(`- **${f.name}**${f.districts.length ? ` (${listEn(f.districts)})` : ''}: ${parts.join('; ')}.${extra.length ? ' ' + cap(listEn(extra)) + '.' : ''}`);
+      if (f.market) extra.push('the great market is inside its walls');
+      const e = city.esplanade;
+      const mayor = f.mayor && e ? ` ${e.name} stands here: a terrace ${e.height} m high on top of a cliff. The mayor speaks from the tribune at its edge, and the crowd gathers below in ${e.square || 'the square'} to listen; on speech days the gates open to everyone, whatever their colours.` : '';
+      L.push(`- **${f.name}**${f.districts.length ? ` (${listEn(f.districts)})` : ''}: ${parts.join('; ')}.${extra.length ? ' ' + cap(listEn(extra)) + '.' : ''}${mayor}`);
     }
-    L.push('', 'From the streets, nobody sees into another faction\'s quarter: ridges, walls and the houses themselves block the view. Only from a height can one look over the borders (use the Sight view to check).', '');
+    L.push('', 'From the streets, nobody sees into another faction\'s quarter: walls, ridges and the houses themselves block the view. Only from a height (a tower, a cable station, the esplanade) can one look over the borders (use the Sight view to check).', '');
+    const cables = city.cables || [];
+    if (cables.length) {
+      L.push('## Cables', '');
+      L.push('Cables stretched between towers carry people, goods and messages over the walls, in cars or on hooks.', '');
+      for (const k of cables) {
+        const [a, b] = k.factions.map(nameOf);
+        L.push(`- **${k.name}**${k.secret ? ' (secret)' : ''}: ${k.secret ? `between ${a} and ${b}, from two discreet tower-houses on either side of the border; only the two factions know it` : `official line from ${a} to ${b}, from the tower on its highest point`}. ${k.length} m long, ${k.clearance > 0 ? `at least ${k.clearance} m above the roofs` : k.pylons.length ? 'held up by a pylon where it would graze the ground' : 'skimming the roofs'}.`);
+      }
+      L.push('');
+    }
   }
 
   // --- Gates and roads ---
