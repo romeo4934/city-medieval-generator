@@ -2000,17 +2000,25 @@ function generateCity(opts) {
     const altAll = city.factions.map(f => f.meanAlt);
     city.factions.forEach(f => { f.highest = f.meanAlt === Math.max(...altAll); f.lowest = f.meanAlt === Math.min(...altAll); });
 
-    // Câbles : chaque faction a sa station sur son point le plus haut (une tour) ; les lignes officielles
-    // montent toutes à l'esplanade du maire ; des lignes secrètes relient deux factions voisines.
+    // Câbles : un réseau. Chaque faction a 1 à 3 stations (des tours) sur ses points hauts ; l'esplanade du maire
+    // en est une parmi d'autres. Les lignes officielles sont des portées courtes entre stations proches (on change
+    // de câble en route), avec quelques boucles ; des lignes secrètes franchissent certaines frontières.
     const rK = rng('cables');
-    const TOWER = 24;
-    const station = (f, near) => {
-      let pool2 = f.cells.filter(c => c.inner && !c.steep && !c.waste && !c.terrace);
-      if (near) pool2 = pool2.filter(c => dist(c.site, near) < 2.5 * cellR);
-      if (!pool2.length) return null;
-      const best = near ? pool2[Math.floor(rK() * pool2.length)] : pool2.reduce((m, c) => (altitude(...c.site) > altitude(...m.site) ? c : m));
-      return { at: best.site, top: altitude(...best.site) + (near ? 16 : TOWER), faction: f.index };
-    };
+    const TOWER = 24, MAXSPAN = Math.max(260, 0.42 * R);
+    const stations = [];
+    for (const f of city.factions) {
+      const pool2 = f.cells.filter(c => c.inner && !c.steep && !c.waste && !c.terrace).sort((a, b) => altitude(...b.site) - altitude(...a.site));
+      const want2 = Math.min(3, 1 + Math.floor(f.cells.length / 12));
+      const mine = [];
+      if (f.mayor && T0) mine.push({ at: [T0.c[0] - T0.front[0] * T0.r * 0.5, T0.c[1] - T0.front[1] * T0.r * 0.5], top: altitude(T0.c[0], T0.c[1]) + 18, faction: f.index, esplanade: true });
+      for (const c of pool2) {
+        if (mine.length >= want2) break;
+        if (mine.some(st => dist(st.at, c.site) < 3 * cellR)) continue;
+        mine.push({ at: c.site, top: altitude(...c.site) + TOWER, faction: f.index });
+      }
+      stations.push(...mine);
+    }
+    stations.forEach((st, i) => { st.id = i; });
     const span = (A, B) => {
       // Hauteur du câble au-dessus des toits, le long de la ligne ; un pylône là où il frôlerait le relief
       let low = Infinity, worst = null;
@@ -2022,29 +2030,52 @@ function generateCity(opts) {
       }
       return { length: Math.round(L), clearance: Math.round(low), worst };
     };
-    const mayorF = city.factions.find(f => f.mayor);
-    const hub = T0 ? { at: [T0.c[0] - T0.front[0] * T0.r * 0.5, T0.c[1] - T0.front[1] * T0.r * 0.5], top: altitude(T0.c[0], T0.c[1]) + 18, faction: F.mayor } : mayorF && station(mayorF);
-    const officialNames = X.cables.official.slice(), secretNames = X.cables.secret.slice();
-    const takeName = (l, fb) => l.splice(Math.floor(rK() * l.length), 1)[0] || fb;
-    if (hub) for (const f of city.factions) {
-      if (f.mayor) continue;
-      const st = station(f);
-      if (!st) continue;
-      const sp = span(st, hub), pylons = sp.clearance < 8 && sp.worst ? [sp.worst] : [];
-      city.cables.push({ secret: false, from: st, to: hub, factions: [f.index, F.mayor], name: takeName(officialNames, X.cables.officialFallback(f.name)), ...sp, pylons });
+    // Noms : des enseignes, comme les rues (« La Ligne du Héron »)
+    const usedLine = new Set();
+    const lineName = secret => {
+      const l = secret ? X.cables.secret : X.cables.official;
+      const free = l.filter(x => !usedLine.has(x));
+      let v = free.length ? free[Math.floor(rK() * free.length)] : null;
+      for (let t = 0; !v && t < 50; t++) { const w = X.cables.lineOf(X.words[Math.floor(rK() * X.words.length)], secret); if (!usedLine.has(w)) v = w; }
+      usedLine.add(v);
+      return v || X.cables.secretFallback;
+    };
+    // Lignes officielles : arbre des portées les plus courtes (tout le réseau est relié), puis quelques boucles
+    const pairs = [];
+    for (let i = 0; i < stations.length; i++) for (let j = i + 1; j < stations.length; j++) pairs.push([dist(stations[i].at, stations[j].at), i, j]);
+    pairs.sort((a, b) => a[0] - b[0]);
+    const root = stations.map((_, i) => i), find = i => (root[i] === i ? i : (root[i] = find(root[i])));
+    const links = [];
+    for (const [d, i, j] of pairs) if (find(i) !== find(j)) { root[find(i)] = find(j); links.push([i, j]); }
+    for (const [d, i, j] of pairs) {
+      if (d > MAXSPAN || links.some(([a, b]) => (a === i && b === j) || (a === j && b === i))) continue;
+      if (rK() < 0.18) links.push([i, j]);
     }
+    for (const [i, j] of links) {
+      const A = stations[i], B = stations[j], sp = span(A, B);
+      // Une portée trop longue ou qui frôle le relief a un pylône au milieu (ou au point le plus bas)
+      const pylons = sp.clearance < 8 && sp.worst ? [sp.worst] : sp.length > MAXSPAN ? [[(A.at[0] + B.at[0]) / 2, (A.at[1] + B.at[1]) / 2]] : [];
+      city.cables.push({ secret: false, from: A, to: B, factions: [A.faction, B.faction], name: lineName(false), ...sp, pylons });
+    }
+    // Lignes secrètes : par-dessus certaines frontières, entre deux maisons-tours discrètes
     for (const b of F.borders) {
-      if (b.a === F.mayor || b.b === F.mayor || rK() > 0.55) continue;
+      if (rK() > 0.5) continue;
       const fa = city.factions.find(f => f.index === b.a), fb = city.factions.find(f => f.index === b.b);
       if (!fa || !fb) continue;
-      // Près de la frontière, de part et d'autre : deux maisons-tours discrètes
       const line = F.lines(b, 0).flat().filter(p => domainAt(p) !== 'out');
       if (!line.length) continue;
       const mid = line[Math.floor(rK() * line.length)];
-      const A = station(fa, mid), B = station(fb, mid);
+      const near = f => {
+        const pool3 = f.cells.filter(c => c.inner && !c.steep && !c.waste && !c.terrace && dist(c.site, mid) < 2.5 * cellR);
+        if (!pool3.length) return null;
+        const c = pool3[Math.floor(rK() * pool3.length)];
+        return { at: c.site, top: altitude(...c.site) + 16, faction: f.index };
+      };
+      const A = near(fa), B = near(fb);
       if (!A || !B || dist(A.at, B.at) < 40) continue;
-      city.cables.push({ secret: true, from: A, to: B, factions: [b.a, b.b], name: takeName(secretNames, X.cables.secretFallback), ...span(A, B), pylons: [] });
+      city.cables.push({ secret: true, from: A, to: B, factions: [b.a, b.b], name: lineName(true), ...span(A, B), pylons: [] });
     }
+    city.cableStations = stations;
     city.factions.forEach(f => { delete f.cells; });
   }
   if (T0) {

@@ -144,10 +144,13 @@ function citySheetFr(city) {
     const cables = city.cables || [];
     if (cables.length) {
       L.push('## Câbles', '');
-      L.push('Des câbles tendus entre des tours font passer gens, marchandises et messages par-dessus les murs, en nacelle ou au crochet.', '');
+      const st = city.cableStations || [];
+      L.push(`Des câbles tendus entre des tours font passer gens, marchandises et messages par-dessus les murs, en nacelle ou au crochet. Le réseau officiel relie ${st.length} stations, toutes sur des hauteurs (${city.esplanade ? "l'esplanade du maire en est une" : 'des tours'}) ; pour un long trajet, on change de câble en route.`, '');
       for (const k of cables) {
         const [a, b] = k.factions.map(nameOf);
-        L.push(`- **${k.name}**${k.secret ? ' (secret)' : ''} : ${k.secret ? `entre ${a.replace(/^L/, 'l')} et ${b.replace(/^L/, 'l')}, depuis deux maisons-tours discrètes de part et d'autre de la frontière ; seules ces deux factions le connaissent` : `ligne officielle ${deFr(a)} ${aFr(b)}, depuis la tour de son point le plus haut`}. ${k.length} m de long, ${k.clearance > 0 ? `au moins ${k.clearance} m au-dessus des toits` : k.pylons.length ? 'soutenue par un pylône là où elle frôlerait le sol' : 'rasant les toits'}.`);
+        const low = t => t.replace(/^L/, 'l');
+        const where = k.secret ? `entre ${low(a)} et ${low(b)}, depuis deux maisons-tours discrètes de part et d'autre de la frontière ; seules ces deux factions le connaissent` : a === b ? `ligne officielle à l'intérieur ${deFr(a)}` : `ligne officielle entre ${low(a)} et ${low(b)}`;
+        L.push(`- **${k.name}**${k.secret ? ' (secret)' : ''} : ${where}. ${k.length} m de long, ${k.clearance > 0 ? `au moins ${k.clearance} m au-dessus des toits` : k.pylons.length ? 'soutenue par un pylône là où elle frôlerait le sol' : 'rasant les toits'}.`);
       }
       L.push('');
     }

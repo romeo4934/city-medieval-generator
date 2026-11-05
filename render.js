@@ -624,19 +624,25 @@ function renderSVG(city, options = {}) {
   const boxes = [];
   const hit = b => boxes.some(o => b[0] < o[2] && b[2] > o[0] && b[1] < o[3] && b[3] > o[1]);
   // Câbles entre les tours : lignes officielles (traits doubles) vers l'esplanade, lignes secrètes (tirets)
+  const ck = Math.max(1, E / 800);   // épaisseur des câbles : lisibles même sur une mégapole
   for (const k of city.cables || []) {
     const A = k.from.at, B = k.to.at, d = lineD([A, ...k.pylons, B]);
-    if (k.secret) out.push(`<path d="${d}" fill="none" stroke="#7a2a2a" stroke-width="1.3" stroke-dasharray="5 4" stroke-opacity=".9"/>`);
+    if (k.secret) out.push(`<path d="${d}" fill="none" stroke="#7a2a2a" stroke-width="${n1(1.5 * ck)}" stroke-dasharray="${n1(6 * ck)} ${n1(4 * ck)}" stroke-opacity=".9"/>`);
     else {
-      out.push(`<path d="${d}" fill="none" stroke="#fffaf0" stroke-width="4.2" stroke-opacity=".8"/>`);
-      out.push(`<path d="${d}" fill="none" stroke="#2f2820" stroke-width="1.2"/>`);
+      out.push(`<path d="${d}" fill="none" stroke="#fffaf0" stroke-width="${n1(4.5 * ck)}" stroke-opacity=".85"/>`);
+      out.push(`<path d="${d}" fill="none" stroke="#2f2820" stroke-width="${n1(1.5 * ck)}"/>`);
       const L = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1, u = [(B[0] - A[0]) / L, (B[1] - A[1]) / L];
-      // une nacelle sur la ligne
       const m = [A[0] + u[0] * L * 0.38, A[1] + u[1] * L * 0.38];
-      out.push(`<rect x="-3.5" y="-2.5" width="7" height="5" fill="#c29a2e" stroke="#2f2820" stroke-width="0.8" transform="translate(${n1(m[0])} ${n1(m[1])}) rotate(${n1(Math.atan2(u[1], u[0]) * 180 / Math.PI)})"/>`);
+      out.push(`<rect x="${n1(-3.5 * ck)}" y="${n1(-2.5 * ck)}" width="${n1(7 * ck)}" height="${n1(5 * ck)}" fill="#c29a2e" stroke="#2f2820" stroke-width="${n1(0.8 * ck)}" transform="translate(${n1(m[0])} ${n1(m[1])}) rotate(${n1(Math.atan2(u[1], u[0]) * 180 / Math.PI)})"/>`);
     }
-    for (const p of k.pylons) out.push(`<rect x="${n1(p[0] - 2.5)}" y="${n1(p[1] - 2.5)}" width="5" height="5" fill="#2f2820"/>`);
-    for (const st of [k.from, k.to]) out.push(`<circle cx="${n1(st.at[0])}" cy="${n1(st.at[1])}" r="${k.secret ? 3.5 : 6}" fill="${k.secret ? '#fffaf0' : '#5b4f3d'}" stroke="${k.secret ? '#7a2a2a' : '#fffaf0'}" stroke-width="1.6"/>`);
+    for (const p of k.pylons) out.push(`<rect x="${n1(p[0] - 2.5 * ck)}" y="${n1(p[1] - 2.5 * ck)}" width="${n1(5 * ck)}" height="${n1(5 * ck)}" fill="#2f2820"/>`);
+  }
+  // Stations : une tour ronde (les secrètes, plus petites et cerclées de rouge)
+  const drawn = [];
+  for (const k of city.cables || []) for (const st of [k.from, k.to]) {
+    if (drawn.some(q => Math.hypot(q[0] - st.at[0], q[1] - st.at[1]) < 2)) continue;
+    drawn.push(st.at);
+    out.push(`<circle cx="${n1(st.at[0])}" cy="${n1(st.at[1])}" r="${n1((k.secret ? 3.5 : 6) * ck)}" fill="${k.secret ? '#fffaf0' : '#5b4f3d'}" stroke="${k.secret ? '#7a2a2a' : '#fffaf0'}" stroke-width="${n1(1.6 * ck)}"/>`);
   }
   // Territoires des factions : une teinte légère par faction, et leur nom en grand
   for (const f of city.factions || []) {

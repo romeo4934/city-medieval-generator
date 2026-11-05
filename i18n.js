@@ -86,7 +86,7 @@ const TEXT = {
     cables: {
       official: ['The Gull Line', 'The Bell Line', 'The Crown Line', 'The Lantern Line', 'The Heron Line', 'The Kite Line', 'The Swallow Line', 'The Harbour Line', 'The Chain Line'],
       secret: ['The Black Thread', 'The Whisper Wire', 'The Rat Line', 'The Moth Line', 'The Silent Cable', 'The Night Rope', 'The Spider Line', 'The Smugglers\' Wire'],
-      officialFallback: f => `The ${f} Line`, secretFallback: 'A nameless wire',
+      lineOf: (w, secret) => (secret ? `The ${w} Wire` : `The ${w} Line`), secretFallback: 'A nameless wire',
     },
     why: { oldTown: 'no room in the old town', wall: 'no room on the walls', room: 'no room', gate: 'no room near the gates', bank: 'no room on the riverbank',
       noRiver: 'no river', outside: 'no room outside the walls', freeBank: 'no free riverbank' },
@@ -184,7 +184,7 @@ const TEXT = {
       official: ['La Ligne des Mouettes', 'La Ligne de la Cloche', 'La Ligne de la Couronne', 'La Ligne des Lanternes', 'La Ligne du Héron', 'La Ligne du Cerf-Volant',
         'La Ligne des Hirondelles', 'La Ligne du Port', 'La Ligne de la Chaîne'],
       secret: ['Le Fil Noir', 'Le Câble Murmurant', 'La Ligne des Rats', 'La Ligne des Phalènes', 'Le Câble Muet', 'La Corde de Nuit', "Le Fil de l'Araignée", 'Le Câble des Contrebandiers'],
-      officialFallback: f => `La Ligne de ${f}`, secretFallback: 'Un câble sans nom',
+      lineOf: (w, secret) => (secret ? `Le Fil ${w}` : `La Ligne ${w}`), secretFallback: 'Un câble sans nom',
     },
     why: { oldTown: 'pas de place dans la vieille ville', wall: 'pas de place sur les remparts', room: 'pas de place', gate: 'pas de place près des portes', bank: "pas de place au bord de l'eau",
       noRiver: 'pas de rivière', outside: 'pas de place hors les murs', freeBank: 'pas de rive libre' },

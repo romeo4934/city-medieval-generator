@@ -126,10 +126,12 @@ function citySheetEn(city) {
     const cables = city.cables || [];
     if (cables.length) {
       L.push('## Cables', '');
-      L.push('Cables stretched between towers carry people, goods and messages over the walls, in cars or on hooks.', '');
+      const st = city.cableStations || [];
+      L.push(`Cables stretched between towers carry people, goods and messages over the walls, in cars or on hooks. The official network links ${st.length} stations, all on high points (${city.esplanade ? 'the Mayor\'s Esplanade is one of them' : 'towers'}); long journeys mean changing cables on the way.`, '');
       for (const k of cables) {
         const [a, b] = k.factions.map(nameOf);
-        L.push(`- **${k.name}**${k.secret ? ' (secret)' : ''}: ${k.secret ? `between ${a} and ${b}, from two discreet tower-houses on either side of the border; only the two factions know it` : `official line from ${a} to ${b}, from the tower on its highest point`}. ${k.length} m long, ${k.clearance > 0 ? `at least ${k.clearance} m above the roofs` : k.pylons.length ? 'held up by a pylon where it would graze the ground' : 'skimming the roofs'}.`);
+        const where = k.secret ? `between ${a} and ${b}, from two discreet tower-houses on either side of the border; only these two factions know it` : a === b ? `official line inside ${a}` : `official line between ${a} and ${b}`;
+        L.push(`- **${k.name}**${k.secret ? ' (secret)' : ''}: ${where}. ${k.length} m long, ${k.clearance > 0 ? `at least ${k.clearance} m above the roofs` : k.pylons.length ? 'held up by a pylon where it would graze the ground' : 'skimming the roofs'}.`);
       }
       L.push('');
     }
