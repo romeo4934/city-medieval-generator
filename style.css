@@ -190,3 +190,10 @@ main {
 .top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 18px; }
 .top h1 { margin: 0; }
 #lang { padding: 3px 9px; font-size: 12px; letter-spacing: .05em; }
+.faction { display: flex; align-items: center; gap: 6px; }
+.faction .swatch { width: 12px; height: 12px; border-radius: 2px; flex: none; }
+.faction input { flex: 1; }
+.sight-info { position: absolute; top: 56px; left: 16px; max-width: 260px; background: rgba(255, 252, 244, .94); border: 1px solid #d8cfb8; border-radius: 6px; padding: 8px 10px; font-size: 12px; box-shadow: 0 1px 4px rgba(0,0,0,.12); }
+.sight-info p { margin: 0 0 6px; }
+.sight-info .row2 { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
+.sight-info .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }

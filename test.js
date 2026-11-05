@@ -14,10 +14,10 @@ const path = require('path');
 const vm = require('vm');
 const os = require('os');
 
-const FILES = ['i18n.js', 'geo.js', 'catalog.js', 'land.js', 'water.js', 'outskirts.js', 'monuments.js', 'names.js', 'generator.js', 'lore.js', 'lore-en.js', 'render.js'];
+const FILES = ['i18n.js', 'geo.js', 'catalog.js', 'land.js', 'water.js', 'outskirts.js', 'factions.js', 'monuments.js', 'names.js', 'generator.js', 'lore.js', 'lore-en.js', 'render.js', 'sight.js'];
 
 function optionsFor(i) {
-  const sizes = ['petite', 'moyenne', 'grande', i % 8 === 7 ? 'metropole' : 'capitale'];
+  const sizes = ['petite', 'moyenne', 'grande', i % 16 === 15 ? 'mega' : i % 8 === 7 ? 'metropole' : 'capitale'];
   const reliefs = ['plaine', 'colline', 'collines', 'vallee'];
   const rivers = ['non', 'oui', 'deux', 'auto'];
   const ages = ['jeune', 'ancienne', 'tresancienne', 'auto'];
@@ -28,7 +28,7 @@ function optionsFor(i) {
     plan: i % 5 === 0 ? 'bastide' : 'organique', walls: i % 3 === 0 ? 'double' : 'simple', twin: i % 7 === 3 ? 'oui' : 'non',
     ledges: i % 2 ? 'oui' : 'non', hillType: hills[i % 5], valleyType: valleys[(i >> 1) % 4],
     lang: i % 2 ? 'fr' : 'en',
-    nHills: i % 11 === 5 ? 10 : i % 11 === 6 ? 6 : null, nLedges: i % 13 === 4 ? 3 : null,
+    nHills: i % 11 === 5 ? 10 : i % 11 === 6 ? 6 : null, nLedges: i % 13 === 4 ? 3 : null, nFactions: i % 3 === 1 ? 2 + (i % 7) : null,
     buildings: i % 3 ? ['temple', 'chateau', 'palais', 'guildes', 'universite', 'caserne', 'prison', 'hospice', 'bains', 'arene', 'cimetiere', 'port', 'monastere', 'moulin'] : ['temple', 'chateau'],
   };
 }
@@ -56,8 +56,8 @@ if (isMainThread) {
   const ctx = {};
   vm.createContext(ctx);
   for (const f of FILES) vm.runInContext(fs.readFileSync(path.join(__dirname, f), 'utf8'), ctx, { filename: f });
-  vm.runInContext('this.api = { generateCity, renderSVG, citySheet, Geo }', ctx);
-  const { generateCity, renderSVG, citySheet, Geo } = ctx.api;
+  vm.runInContext('this.api = { generateCity, renderSVG, citySheet, Geo, sightGrid, sightFrom }', ctx);
+  const { generateCity, renderSVG, citySheet, Geo, sightGrid, sightFrom } = ctx.api;
   const failures = [];
   let slowest = 0;
   const fail = (msg, opts) => failures.push({ msg, opts });
@@ -106,6 +106,12 @@ if (isMainThread) {
       if (city.gates.length < 2) fail('moins de 2 portes', opts);
       if (!sheet.includes('# ' + city.name)) fail('fiche incomplète', opts);
       if (!svg.startsWith('<svg') || !svg.endsWith('</svg>')) fail('SVG mal formé', opts);
+      if (opts.nFactions) {
+        if (city.factions.length < 2) fail(`${city.factions.length} faction(s) sur ${opts.nFactions}`, opts);
+        if (!city.esplanade) fail('pas d\'esplanade', opts);
+        if (!sheet.includes('## Factions')) fail('factions absentes de la fiche', opts);
+        if (i % 9 === 1) { const G = sightGrid(city); if (!sightFrom(G, city.esplanade.c).some(Boolean)) fail('vue vide', opts); }
+      }
 
       const houses = [...city.houses.stone, ...city.houses.timber, ...city.houses.thatch, ...city.annexes];
       const cen = houses.map(h => Geo.centroid(h));

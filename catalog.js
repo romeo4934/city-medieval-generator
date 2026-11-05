@@ -24,6 +24,7 @@ const SIZES = {
   grande:   { cells: 45, gates: 5, districts: 7 },
   capitale: { cells: 70, gates: 6, districts: 9 },
   metropole: { cells: 110, gates: 7, districts: 12 },
+  mega:      { cells: 330, gates: 8, districts: 16 },
 };
 
 const BUILDINGS = [
@@ -41,6 +42,7 @@ const BUILDINGS = [
   { id: 'port',       label: 'Port' },
   { id: 'monastere',  label: 'Monastère' },
   { id: 'moulin',     label: 'Moulin' },
+  { id: 'esplanade',  label: 'Esplanade du Maire' },
 ];
 const DEFAULT_BUILDINGS = ['temple', 'chateau'];
 

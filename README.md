@@ -12,10 +12,23 @@ The interface, every generated name and the city sheet come in **English** (defa
 
 **The terrain is measured.** Elevation is in metres and slope in percent, checked for every plot: people build normally up to 15 %, sparsely and on terraces up to 25 %, never beyond. A hill can rise in **terraces**: flat levels separated by 10–25 m cliffs or retaining walls, which no house straddles, crossed by named **stairs**. On slopes, streets follow the contour lines.
 
+**Factions.** Ask for 2 to 8 rival factions. Each holds a wedge of the city around the **mayor's quarter** in the centre, and the geography helps it hold its ground. Between two territories runs a barrier, a mix of:
+- a **ridge**: a long steep hill line where nobody builds, crossed by a few passes;
+- a **ravine**: a gorge between two cliffs, crossed only by bridges;
+- a **canal**, crossed only by bridges;
+- an **inner wall** with towers, with a gate where each main street passes.
+
+The town grew before the factions dug in: the barriers cut through it, so quarters stay of similar size. Each faction is tinted and outlined in its colour, and can be renamed (the names are kept in the page address). The city sheet says, for each faction, which quarters it holds, what separates it from each neighbour and how many ways cross, and whether it holds the high ground, the citadel or the river.
+
+**The Mayor's Esplanade.** In the centre, a terrace 11–17 m high on top of a cliff, with a tribune at its edge, overlooks the market square: the mayor speaks, the crowd listens from below. Two flights of steps climb from the square. It is also available without factions (Landmarks).
+
+**Sight.** The **Sight** view shows what a seer can see from any point: click the map to move them, tick "from a tower" to raise them 20 m. Terrain, houses (9 m), landmarks and walls block the view; hidden ground is darkened, with distance rings, and the panel lists which faction quarters can be seen, and how much of each. From the street, a seer sees a few streets; from the esplanade or a tower, they look over the borders.
+
 **Three views**, with the buttons above the map:
 - **Map**: the city plan, with hill shading, contours every 10 m and cliffs;
 - **Relief**: elevation colours, shading, contours every 5 m labelled in metres and spot heights, with the city on top;
-- **Slopes**: slope classes (easy, buildable, terraces, too steep, rock), with houses in black to check where people built.
+- **Slopes**: slope classes (easy, buildable, terraces, too steep, rock), with houses in black to check where people built;
+- **Sight**: what can be seen from a point (see above).
 
 **The terrain decides everything.** An elevation map (plain, one hill, several hills — up to 10, like Rome or Lisbon — or a valley) determines:
 - where **rivers** flow: they follow the low ground and never climb a hill;
@@ -61,7 +74,8 @@ The interface, every generated name and the city sheet come in **English** (defa
 
 ## Use
 
-- **Size**: from small town (~2,000 people) to great city (~50,000).
+- **Size**: from small town (~2,000 people) to great city (~50,000) and mega city (~150,000–200,000, like Paris around 1300; it takes 8–20 s to generate).
+- **Factions**: number of factions (empty or 0 = none); click a name to rename it, the last one being the mayor's quarter.
 - **Hills**: number of hills (0–10), cliff steps per hill (0–3, the terraces), shape of the main hill and of the valley.
 - **How many?**: rivers (0–3), gates, walls, quarters, small squares, churches, inns, islands, mill races, and forest in %. Empty = random. If there is no room (an island on a river too short inside the town…), the tool says so.
 - **Seed**: same seed + same settings = same city. Adding a river or a landmark does not move everything else.
@@ -85,6 +99,8 @@ Scale: 1 unit = 1 metre.
 | `land.js` | the countryside: strip fields along the roads, forests |
 | `water.js` | water works: mill races and mills, islands |
 | `outskirts.js` | outside the walls: suburb church, leper house, tanneries, mills, gallows |
+| `factions.js` | factions: territories, border barriers (ridges, ravines, canals, walls), the mayor's esplanade |
+| `sight.js` | the Sight view: what can be seen from a point (radial line of sight over terrain and buildings) |
 | `monuments.js` | drawing landmarks in their precincts |
 | `names.js` | names and crossings: streets, roads, bridges, stairs, gates, inns |
 | `worker.js` | background computation (the page stays responsive while generating) |

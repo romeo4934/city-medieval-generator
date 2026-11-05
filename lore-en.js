@@ -31,7 +31,7 @@ function citySheetEn(city) {
   const s = city.stats;
   const L = [];
   const n = v => v.toLocaleString('en-GB');
-  const sizeText = { petite: 'Small town', moyenne: 'Market town', grande: 'Large town', capitale: 'Capital', metropole: 'Great city' }[city.size] || 'Town';
+  const sizeText = { petite: 'Small town', moyenne: 'Market town', grande: 'Large town', capitale: 'Capital', metropole: 'Great city', mega: 'Mega city' }[city.size] || 'Town';
   const riverNames = city.rivers.map((_, i) => RIVER_NAMES_EN[(seedHash(city.seed + '|riviere|' + i)) % RIVER_NAMES_EN.length]);
   const listEn = items => (items.length <= 1 ? items.join('') : items.slice(0, -1).join(', ') + ' and ' + items[items.length - 1]);
   const name = city.name;
@@ -80,8 +80,8 @@ function citySheetEn(city) {
     if (city.relief === 'plaine') site.push(`The market stands at ${A.plaza} m; the ground varies by only a few metres.`);
     else site.push(`The market stands at ${A.plaza} m; the highest point reaches ${A.max} m, ${A.max - A.plaza} m above it. The steepest slopes exceed ${A.steepest} %: above 25 % nobody builds, and between 15 and 25 % houses cling on in terraces.`);
   }
-  if (city.cliffs.length) {
-    const drops = city.cliffs.map(c => c.drop);
+  if (city.cliffs.some(c => !c.kind)) {
+    const drops = city.cliffs.filter(c => !c.kind).map(c => c.drop);
     site.push(`The height rises in terraces: ledges of ${Math.min(...drops)} to ${Math.max(...drops)} m, cliffs or retaining walls, separate flat levels that have been built on.${city.stairs.length ? ' People pass from one to the next by ' + (city.stairs.length > 1 ? city.stairs.length + ' stairs: ' + city.stairs.map(s2 => s2.name).join(', ') : 'a single stair, ' + city.stairs[0].name) + '.' : ''}`);
   }
   L.push(site.join(' '), '');
@@ -102,6 +102,31 @@ function citySheetEn(city) {
   }
   if (city.citadel) hist.push('The citadel, older than the lower town, has kept its own wall.');
   L.push(hist.join(' '), '');
+
+  // --- Factions ---
+  if ((city.factions || []).length) {
+    L.push('## Factions', '');
+    const BAR = { ridge: ['a steep ridge where nobody builds', 'pass', 'passes'], ravine: ['a ravine between two cliffs', 'bridge', 'bridges'],
+      water: ['a canal', 'bridge', 'bridges'], wall: ['an inner wall with towers', 'gate', 'gates'] };
+    const nameOf = i => (city.factions.find(f => f.index === i) || {}).name || 'its neighbour';
+    if (city.centre) {
+      const e = city.esplanade;
+      L.push(`- **${city.centre.name}** (the centre, neutral ground): the market square${e ? `, overlooked by ${e.name}, a terrace ${e.height} m high on top of a cliff. The mayor speaks from the tribune at its edge; the crowd gathers in the square below to listen, and everyone can come, whatever their colours. Two flights of steps climb from the square` : ''}.`);
+    }
+    for (const f of city.factions) {
+      const parts = f.borders.map(b => {
+        const [what, one, many] = BAR[b.type];
+        return `towards ${nameOf(b.with)}, ${what}, ${b.ways ? `crossed by ${b.ways === 1 ? 'a single ' + one : b.ways + ' ' + many}` : 'that no main street crosses'}`;
+      });
+      const extra = [];
+      if (f.highest) extra.push('it holds the highest ground of all the factions');
+      if (f.lowest) extra.push('it lies lowest, and its streets are watched from above');
+      if (f.citadel) extra.push('the citadel is in its hands');
+      if (f.river) extra.push('it controls a stretch of the river');
+      L.push(`- **${f.name}**${f.districts.length ? ` (${listEn(f.districts)})` : ''}: ${parts.join('; ')}.${extra.length ? ' ' + cap(listEn(extra)) + '.' : ''}`);
+    }
+    L.push('', 'From the streets, nobody sees into another faction\'s quarter: ridges, walls and the houses themselves block the view. Only from a height can one look over the borders (use the Sight view to check).', '');
+  }
 
   // --- Gates and roads ---
   L.push('## Gates and roads', '');

@@ -45,7 +45,7 @@ function citySheetFr(city) {
   const pick = list => list[Math.floor(rand() * list.length)];
   const s = city.stats;
   const L = [];
-  const sizeText = { petite: 'Petite ville', moyenne: 'Ville moyenne', grande: 'Grande ville', capitale: 'Capitale', metropole: 'Grande cité' }[city.size] || 'Ville';
+  const sizeText = { petite: 'Petite ville', moyenne: 'Ville moyenne', grande: 'Grande ville', capitale: 'Capitale', metropole: 'Grande cité', mega: 'Mégapole' }[city.size] || 'Ville';
   const riverNames = city.rivers.map((_, i) => RIVER_NAMES[(seedHash(city.seed + '|riviere|' + i)) % RIVER_NAMES.length]);
 
   L.push(`# ${city.name}`, '');
@@ -93,8 +93,8 @@ function citySheetFr(city) {
     if (city.relief === 'plaine') site.push(`Le marché est à ${A.plaza} m d'altitude ; le terrain ne varie que de quelques mètres.`);
     else site.push(`Le marché est à ${A.plaza} m d'altitude ; le point le plus haut atteint ${A.max} m, soit ${A.max - A.plaza} m au-dessus. Les pentes les plus fortes dépassent ${A.steepest} % : au-delà de 25 %, on ne bâtit pas, et entre 15 et 25 % les maisons s'accrochent en terrasses.`);
   }
-  if (city.cliffs.length) {
-    const drops = city.cliffs.map(c => c.drop);
+  if (city.cliffs.some(c => !c.kind)) {
+    const drops = city.cliffs.filter(c => !c.kind).map(c => c.drop);
     site.push(`La hauteur monte par esplanades : des ressauts de ${Math.min(...drops)} à ${Math.max(...drops)} m, falaises ou murs de soutènement, séparent des paliers plats où l'on a bâti.${city.stairs.length ? ' On passe de l’un à l’autre par ' + (city.stairs.length > 1 ? city.stairs.length + ' escaliers : ' + city.stairs.map(s2 => s2.name).join(', ') : 'un seul escalier, ' + city.stairs[0].name) + '.' : ''}`);
   }
   L.push(site.join(' '), '');
@@ -115,6 +115,31 @@ function citySheetFr(city) {
   }
   if (city.citadel) hist.push('La citadelle, plus ancienne que la ville basse, a gardé sa propre enceinte.');
   L.push(hist.join(' '), '');
+
+  // --- Factions ---
+  if ((city.factions || []).length) {
+    L.push('## Factions', '');
+    const BAR = { ridge: ['une crête escarpée où personne ne bâtit', 'col', 'cols'], ravine: ['un ravin entre deux falaises', 'pont', 'ponts'],
+      water: ['un canal', 'pont', 'ponts'], wall: ['un mur intérieur flanqué de tours', 'porte', 'portes'] };
+    const nameOf = i => (city.factions.find(f => f.index === i) || {}).name || 'sa voisine';
+    if (city.centre) {
+      const e = city.esplanade;
+      L.push(`- **${city.centre.name}** (le centre, terrain neutre) : la place du marché${e ? `, dominée par ${e.name.charAt(0).toLowerCase() + e.name.slice(1)}, une terrasse haute de ${e.height} m au sommet d'une falaise. Le maire parle depuis la tribune, au bord ; la foule se rassemble en bas sur la place pour l'écouter, et chacun peut venir, quelles que soient ses couleurs. Deux escaliers montent de la place` : ''}.`);
+    }
+    for (const f of city.factions) {
+      const parts = f.borders.map(b => {
+        const [what, one, many] = BAR[b.type];
+        return `vers ${nameOf(b.with)}, ${what}, ${b.ways ? `franchi par ${b.ways === 1 ? 'un seul ' + one : b.ways + ' ' + many}` : 'qu\'aucune grande rue ne franchit'}`;
+      });
+      const extra = [];
+      if (f.highest) extra.push('elle tient le terrain le plus haut de toutes les factions');
+      if (f.lowest) extra.push('elle est la plus basse, et ses rues sont surveillées d\'en haut');
+      if (f.citadel) extra.push('la citadelle est entre ses mains');
+      if (f.river) extra.push('elle contrôle un tronçon de la rivière');
+      L.push(`- **${f.name}**${f.districts.length ? ` (${listFr(f.districts)})` : ''} : ${parts.join(' ; ')}.${extra.length ? ' ' + cap(listFr(extra)) + '.' : ''}`);
+    }
+    L.push('', 'Depuis la rue, personne ne voit dans le quartier d\'une autre faction : les crêtes, les murs et les maisons elles-mêmes cachent la vue. Seule une hauteur permet de regarder par-dessus les frontières (la vue Regard permet de le vérifier).', '');
+  }
 
   // --- Portes et routes ---
   L.push('## Portes et routes', '');

@@ -55,7 +55,7 @@ $('lang').onclick = () => {
 // ---------- réglages ----------
 
 // Quantités : [option, paramètre d'adresse, min, max] ; vide = au hasard
-const COUNTS = [['nHills', 'n_collines', 0, 10], ['nRivers', 'n_rivieres', 0, 3], ['nGates', 'n_portes', 2, 8], ['nRings', 'n_enceintes', 1, 3], ['nDistricts', 'n_quartiers', 2, 12], ['nLedges', 'n_ressauts', 0, 3], ['nSquares', 'n_placettes', 0, 8], ['nChurches', 'n_eglises', 0, 12], ['nInns', 'n_auberges', 0, 10], ['nIslands', 'n_iles', 0, 3], ['nCanals', 'n_biefs', 0, 3], ['forest', 'foret', 0, 100]];
+const COUNTS = [['nHills', 'n_collines', 0, 10], ['nRivers', 'n_rivieres', 0, 3], ['nGates', 'n_portes', 2, 8], ['nRings', 'n_enceintes', 1, 3], ['nDistricts', 'n_quartiers', 2, 12], ['nLedges', 'n_ressauts', 0, 3], ['nSquares', 'n_placettes', 0, 8], ['nChurches', 'n_eglises', 0, 12], ['nInns', 'n_auberges', 0, 10], ['nIslands', 'n_iles', 0, 3], ['nCanals', 'n_biefs', 0, 3], ['forest', 'foret', 0, 100], ['nFactions', 'n_factions', 0, 8]];
 const toCount = (v, lo, hi) => (v === null || v === undefined || v === '' || isNaN(+v) ? null : Math.max(lo, Math.min(hi, Math.round(+v))));
 
 function normalize(o) {
@@ -74,6 +74,7 @@ function normalize(o) {
     valleyType: ['auto', 'large', 'gorge', 'confluence', 'meandre'].includes(o.valleyType) ? o.valleyType : 'auto',
     buildings: Array.isArray(o.buildings) ? o.buildings.filter(id => BUILDINGS.some(b => b.id === id)) : DEFAULT_BUILDINGS.slice(),
     names: Array.isArray(o.names) ? o.names.map(n => String(n || '')) : [],
+    factionNames: Array.isArray(o.factionNames) ? o.factionNames.map(n => String(n || '')) : [],
     cityName: String(o.cityName || ''),
     lang: lang === 'fr' ? 'fr' : 'en',
   };
@@ -100,6 +101,7 @@ function readHash() {
     valleyType: p.get('vallee'),
     buildings: p.has('bat') ? p.get('bat').split(',').filter(Boolean) : undefined,
     names: p.has('noms') ? p.get('noms').split('|') : [],
+    factionNames: p.has('factions') ? p.get('factions').split('|') : [],
     cityName: p.get('nom'),
   });
 }
@@ -113,6 +115,7 @@ function writeHash(o) {
   if (mapView !== 'plan') p.set('vue', mapView);
   p.set('lang', lang);
   if (o.names.some(Boolean)) p.set('noms', o.names.join('|'));
+  if (o.factionNames.some(Boolean)) p.set('factions', o.factionNames.join('|'));
   history.replaceState(null, '', '#' + p);
 }
 
@@ -204,16 +207,56 @@ function show(city) {
     ${s.shortfalls && s.shortfalls.length ? `<p class="warn">${U.noRoom}${sep}${escAttr(s.shortfalls.join('; '))}</p>` : ''}`;
 
   $('sheet').innerHTML = sheetToHtml(citySheet(current));
+  // Factions (puis le quartier du maire, au centre) : chacune se renomme comme un quartier
+  const facs = current.factions || [];
+  $('factionNames').innerHTML = facs.map(f => `
+    <label class="district faction"><span class="swatch" style="background:${f.color}"></span>
+      <input type="text" data-f="${f.index}" value="${escAttr(opts.factionNames[f.index] || '')}" placeholder="${escAttr(f.auto)}">
+    </label>`).join('') + (current.centre ? `
+    <label class="district faction"><span class="swatch" style="background:#d8cfb8"></span>
+      <input type="text" data-f="${current.factionCount}" value="${escAttr(opts.factionNames[current.factionCount] || '')}" placeholder="${escAttr(current.centre.auto)}">
+    </label>` : '');
   $('districts').innerHTML = current.districts.map((d, k) => `
     <label class="district">
       <input type="text" data-k="${k}" value="${escAttr(opts.names[k] || '')}" placeholder="${escAttr(d.auto)}">
     </label>`).join('');
 }
 
+// ---------- Sight: what a seer sees from a point ----------
+let sightCache = null, sightAt = null;
+function sightOverlay() {
+  if (!sightCache || sightCache.city !== current) { sightCache = { city: current, grid: sightGrid(current) }; sightAt = null; }
+  const G = sightCache.grid;
+  if (!sightAt) sightAt = current.esplanade ? current.esplanade.c.slice() : current.centre ? current.centre.at.slice() : [0, 0];
+  const tower = $('tower').checked;
+  const seen = sightFrom(G, sightAt, tower ? SIGHT_HEIGHTS.tower : SIGHT_HEIGHTS.eye);
+  // Hidden ground is darkened; what can be seen stays clear
+  const cv = document.createElement('canvas');
+  cv.width = cv.height = G.n;
+  const ctx = cv.getContext('2d'), img = ctx.createImageData(G.n, G.n);
+  for (let k = 0; k < seen.length; k++) if (!seen[k]) { img.data[k * 4] = 28; img.data[k * 4 + 1] = 30; img.data[k * 4 + 2] = 48; img.data[k * 4 + 3] = 135; }
+  ctx.putImageData(img, 0, 0);
+  const E = current.E, [x, y] = sightAt;
+  const rings = [100, 200, 400, 800].map(r => `<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="#fffaf0" stroke-opacity=".8" stroke-width="1.5" stroke-dasharray="6 6"/><text x="${x + r * 0.71 + 4}" y="${y - r * 0.71}" font-size="${E / 60}" fill="#fffaf0" paint-order="stroke" stroke="#333" stroke-width="${E / 400}">${r} m</text>`).join('');
+  const eye = `<g transform="translate(${x} ${y})"><circle r="${E / 90}" fill="#fffaf0" stroke="#7a3a26" stroke-width="${E / 300}"/><circle r="${E / 260}" fill="#7a3a26"/></g>`;
+  // Which factions the seer can see, and how much of their quarter
+  const list = sightSummary(G, seen);
+  const fname = i => (current.factions.find(f => f.index === i) || {});
+  $('sightList').innerHTML = !current.factions.length ? ''
+    : (list.length ? `<p>${lang === 'fr' ? 'Visible d\'ici :' : 'Seen from here:'}</p>` + list.map(v => `<div class="row2"><span class="swatch" style="background:${fname(v.faction).color}"></span>${escAttr(fname(v.faction).name)} — ${Math.round(v.share * 100)} %</div>`).join('')
+      : `<p>${lang === 'fr' ? 'Aucun quartier de faction visible d\'ici.' : 'No faction quarter can be seen from here.'}</p>`);
+  return `<image x="${-E}" y="${-E}" width="${2 * E}" height="${2 * E}" preserveAspectRatio="none" style="image-rendering:pixelated" href="${cv.toDataURL()}"/>${rings}${eye}`;
+}
+$('tower').onchange = () => drawMap();
+
 // Dessine la ville dans la vue choisie, sans la régénérer
 function drawMap() {
   if (!current) return;
-  $('map').innerHTML = renderSVG(current, { view: mapView });
+  $('sightInfo').hidden = mapView !== 'sight';
+  if (mapView === 'sight') {
+    const svg = renderSVG(current, { view: 'plan' });
+    $('map').innerHTML = svg.slice(0, svg.lastIndexOf('</svg>')) + sightOverlay() + '</svg>';
+  } else $('map').innerHTML = renderSVG(current, { view: mapView });
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('on', b.dataset.view === mapView));
   if (view) applyView();
 }
@@ -237,6 +280,14 @@ $('districts').addEventListener('change', e => {
   build({ ...opts, names });
 });
 $('districts').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
+$('factionNames').addEventListener('change', e => {
+  const k = +e.target.dataset.f;
+  const names = opts.factionNames.slice();
+  while (names.length <= k) names.push('');
+  names[k] = e.target.value.replace(/\|/g, '/').trim();
+  build({ ...opts, factionNames: names });
+});
+$('factionNames').addEventListener('keydown', e => { if (e.key === 'Enter') e.target.blur(); });
 $('cityName').onchange = () => build({ ...opts, cityName: $('cityName').value.trim() });
 $('cityName').onkeydown = e => { if (e.key === 'Enter') e.target.blur(); };
 
@@ -294,8 +345,15 @@ $('map').addEventListener('dblclick', e => {
   zoomAt(e.shiftKey ? 1 / 2 : 2, p.x, p.y);
 });
 
-let drag = null;
+let drag = null, dragMoved = 0;
+$('map').addEventListener('click', e => {
+  if (mapView !== 'sight' || !current || dragMoved > 6) return;
+  const p = toMap(e);
+  sightAt = [p.x, p.y];
+  drawMap();
+});
 $('map').addEventListener('pointerdown', e => {
+  dragMoved = 0;
   const svg = $('map').querySelector('svg');
   if (!svg || e.button !== 0) return;
   drag = { startScreen: [e.clientX, e.clientY], view: { ...view } };
@@ -308,6 +366,7 @@ $('map').addEventListener('pointermove', e => {
   const rect = svg.getBoundingClientRect();
   const scale = drag.view.w / Math.min(rect.width, rect.height);
   const s = drag.startScreen;
+  dragMoved = Math.max(dragMoved, Math.hypot(e.clientX - s[0], e.clientY - s[1]));
   view.x = drag.view.x - (e.clientX - s[0]) * scale;
   view.y = drag.view.y - (e.clientY - s[1]) * scale;
   clampView();
