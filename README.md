@@ -21,7 +21,8 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 - où l'on **ne construit pas** : les pentes raides deviennent des vignes ou des jardins en terrasses ;
 - où se dresse la **citadelle** : sur le plateau du sommet, avec sa propre enceinte et une route qui y monte ;
 - avec plusieurs collines, la plus haute porte l'acropole ; les autres, plus basses, gardent leurs pentes en vignes et portent un petit sanctuaire avec leur nom (Mont des Corbeaux, Butte aux Moulins…), et la ville se glisse dans les vallons ;
-- par où passent les **routes**, qui contournent les pentes.
+- par où passent les **routes**, qui contournent les pentes ;
+- la **forme de la vallée** : large, gorge étroite (la ville ne s'étend qu'en longueur), confluence de deux rivières, ou méandre où la rivière fait presque le tour de la ville, comme le Doubs à Besançon.
 
 **La ville a une histoire.** Elle naît autour du marché, sur un terrain plat, près d'un gué s'il y a une rivière, puis s'étend en évitant pentes et cours d'eau. L'**âge de la ville** (1, 2 ou 3 enceintes) décide de combien de fois elle a débordé de ses murs. Chaque enceinte suit le tracé le plus court à défendre (elle englobe pentes et collines au lieu de les contourner). Les anciennes enceintes restent à l'intérieur en anneaux, debout ou démolies par longs tronçons ; les parties tombées sont devenues des boulevards, et les rues ont percé des brèches dans le reste. Là où la rivière entre dans la ville, une porte d'eau avec sa herse. Comme à Nuremberg ou à Bruges, un **fossé** (en eau en plaine, à sec sur les hauteurs) fait le tour du rempart, franchi par un pont devant chaque porte, et des **tours en saillie** se succèdent tous les 38 m environ, comme à Carcassonne.
 
@@ -34,6 +35,10 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 1. **Les grandes rues** sont les chemins les moins pénibles sur le terrain, des portes au marché et vers les villes voisines. Elles contournent les pentes, montent en lacets, se rejoignent en Y et ne franchissent l'eau que par des ponts.
 2. **Les rues secondaires poussent** depuis les grandes rues, à peu près perpendiculaires et en suivant les courbes de niveau dans les pentes. Elles s'arrêtent sur une autre rue, un mur, l'eau, une falaise ou une pente trop forte, ce qui donne naturellement des impasses. Les vieux murs démolis deviennent des boulevards et une partie des berges des quais. Dans une bastide, ce sont les lignes du damier.
 3. **Les parcelles sont découpées le long des rues** : façade étroite, maison devant, cour ou jardin jusqu'au milieu de l'îlot, parfois un arrière-corps ou une dépendance. Les îlots sont simplement ce qui reste entre les rues : ils ont donc des formes variées. Dehors, les champs sont en lanières (openfield).
+
+**L'eau est aménagée.** Un bief dérivé de la rivière fait tourner des moulins, une île s'élargit au milieu du courant avec ses maisons, et certains ponts de la ville sont habités, comme le pont au Change. Le fossé n'est en eau que sur les tronçons bas du rempart, à sec sur les hauteurs.
+
+**La campagne vit.** Les champs sont des quartiers de lanières qui partent des routes (openfield), les pentes proches de la ville sont plantées de vigne en terrasses le long des courbes de niveau, et les forêts occupent ce qui reste loin des routes. Hors les murs, on trouve une église de faubourg, une maladrerie à l'écart, des tanneries en aval au bord de l'eau, des moulins sur la rivière et le gibet sur une hauteur.
 
 **Les maisons dépendent du quartier.**
 - **Parcelles en lanières** : façade étroite sur rue, maison devant, cour ou jardin derrière, parfois une dépendance au fond.
@@ -79,11 +84,17 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 | `style.css` | la mise en page |
 | `geo.js` | outils : hasard reproductible, géométrie, Voronoi, plus courts chemins |
 | `catalog.js` | tailles, bâtiments, types de maisons, listes de noms |
-| `generator.js` | le modèle : relief, rivières, croissance, enceintes, réseau de rues (A* sur le terrain puis croissance), parcelles, noms (données pures) |
+| `generator.js` | le modèle : relief, rivières, croissance, enceintes, réseau de rues (A* sur le terrain puis croissance), parcelles (données pures) |
+| `land.js` | la campagne : champs en lanières le long des routes, forêts |
+| `water.js` | l'eau aménagée : biefs et moulins, îles |
+| `outskirts.js` | hors les murs : église de faubourg, maladrerie, tanneries, moulins, gibet |
+| `monuments.js` | le dessin des bâtiments importants dans leur enclos |
+| `names.js` | les noms et les croisements : rues, routes, ponts, escaliers, portes, auberges |
+| `worker.js` | le calcul en arrière-plan (la page reste fluide pendant la génération) |
 | `lore.js` | la fiche de ville |
 | `render.js` | le dessin en SVG, placement des étiquettes |
 | `app.js` | l'interface : réglages, zoom, enregistrement, export |
-| `test.js` | les tests : `node test.js` (ou `node test.js 200` pour plus de villes) |
+| `test.js` | les tests, en parallèle sur tous les cœurs : `node test.js` (ou `node test.js 200`) |
 
 ## Mise en ligne (GitHub Pages)
 

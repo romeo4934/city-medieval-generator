@@ -151,3 +151,65 @@ function tracePath(prev, from) {
   while (prev[cur] >= 0) { cur = prev[cur]; path.push(cur); }
   return path;
 }
+
+// ---------- outils pour le tracé (rues, parcelles, monuments) ----------
+
+const between = (r, [a, b]) => a + r() * (b - a);
+const circle = (c, r, n = 36) => Array.from({ length: n }, (_, i) => [c[0] + Math.cos((i / n) * 2 * Math.PI) * r, c[1] + Math.sin((i / n) * 2 * Math.PI) * r]);
+const inradius = poly => {
+  const c = Geo.centroid(poly);
+  let r = Infinity;
+  for (let i = 0; i < poly.length; i++) r = Math.min(r, Geo.distToSegment(c, poly[i], poly[(i + 1) % poly.length]));
+  return [c, r];
+};
+const rect = (c, ax, len, wid) => {
+  const v = [-ax[1], ax[0]];
+  return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [c[0] + ax[0] * a * len / 2 + v[0] * b * wid / 2, c[1] + ax[1] * a * len / 2 + v[1] * b * wid / 2]);
+};
+const inside = (poly, p) => {     // polygone convexe
+  const s = Math.sign(Geo.area(poly));
+  for (let i = 0; i < poly.length; i++) {
+    const A = poly[i], B = poly[(i + 1) % poly.length];
+    if (((B[0] - A[0]) * (p[1] - A[1]) - (B[1] - A[1]) * (p[0] - A[0])) * s < 0) return false;
+  }
+  return true;
+};
+const inPoly = (poly, p) => {     // polygone quelconque (lancer de rayon)
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const a = poly[i], b = poly[j];
+    if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < ((b[0] - a[0]) * (p[1] - a[1])) / (b[1] - a[1]) + a[0]) c = !c;
+  }
+  return c;
+};
+const stripCut = (poly, dir, widths, rand) => {
+  const n = [-dir[1], dir[0]];
+  const ts = poly.map(p => p[0] * n[0] + p[1] * n[1]);
+  const out = [];
+  for (let t = Math.min(...ts); t < Math.max(...ts);) {
+    const w = between(rand, widths);
+    let s = Geo.clip(poly, n[0] * t, n[1] * t, n[0], n[1]);
+    s = Geo.clip(s, n[0] * (t + w), n[1] * (t + w), -n[0], -n[1]);
+    if (s.length >= 3 && Math.abs(Geo.area(s)) > 15) out.push(s);
+    t += w;
+  }
+  return out;
+};
+const norm = v => { const l = Math.hypot(v[0], v[1]) || 1; return [v[0] / l, v[1] / l]; };
+const polyLen = pts => pts.reduce((acc, p, i) => (i ? acc + Math.hypot(p[0] - pts[i - 1][0], p[1] - pts[i - 1][1]) : 0), 0);
+// Point d'intersection de deux segments (ou null)
+const segHit = (a, b, c, d) => {
+  const den = (b[0] - a[0]) * (d[1] - c[1]) - (b[1] - a[1]) * (d[0] - c[0]);
+  if (Math.abs(den) < 1e-9) return null;
+  const t = ((c[0] - a[0]) * (d[1] - c[1]) - (c[1] - a[1]) * (d[0] - c[0])) / den;
+  const u = ((c[0] - a[0]) * (b[1] - a[1]) - (c[1] - a[1]) * (b[0] - a[0])) / den;
+  return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? { t, u, at: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t] } : null;
+};
+// Simplification (Douglas-Peucker) puis lissage d'une ligne
+const simplify = (pts, tol) => {
+  if (pts.length < 3) return pts;
+  let best = 0, bi = 0;
+  for (let i = 1; i < pts.length - 1; i++) { const d = Geo.distToSegment(pts[i], pts[0], pts[pts.length - 1]); if (d > best) { best = d; bi = i; } }
+  if (best < tol) return [pts[0], pts[pts.length - 1]];
+  return simplify(pts.slice(0, bi + 1), tol).slice(0, -1).concat(simplify(pts.slice(bi), tol));
+};

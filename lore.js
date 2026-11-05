@@ -52,7 +52,11 @@ function citySheet(city) {
   L.push('## Le site', '');
   const site = [];
   if (city.relief === 'plaine') site.push(`${city.name} s'étend sur une plaine, sans autre défense que ses murs.`);
-  if (city.relief === 'vallee') site.push(`${city.name} occupe le fond d'une vallée ; les versants, trop raides pour bâtir, sont couverts de vignes.`);
+  if (city.relief === 'vallee') site.push({
+    gorge: `${city.name} se serre au fond d'une gorge étroite : les falaises qui l'enserrent la protègent mieux qu'un rempart, mais la ville n'a jamais pu s'étendre qu'en longueur, le long de l'eau.`,
+    confluence: `${city.name} est née à la confluence de deux vallées : deux rivières s'y rejoignent, et la ville tient la pointe de terre entre les deux.`,
+    meandre: `${city.name} est enfermée dans un méandre : la rivière en fait presque le tour, et seul un étroit cou de terre la relie au reste du pays, comme à Besançon.`,
+  }[city.valleyType] || `${city.name} occupe le fond d'une vallée large ; les versants, trop raides pour bâtir, sont couverts de vignes et de bois.`);
   // Forme de la colline principale, décrite comme sur le terrain
   const dirFr = v => ['à l’est', 'au sud-est', 'au sud', 'au sud-ouest', 'à l’ouest', 'au nord-ouest', 'au nord', 'au nord-est'][((Math.round(Math.atan2(v[1], v[0]) / (Math.PI / 4)) % 8) + 8) % 8];
   const H0 = (city.hillShapes || [])[0];
@@ -140,6 +144,16 @@ function citySheet(city) {
   for (const sq of city.squares) L.push(`- **${sq.name}**, petite place avec son puits (${city.districts[sq.district] ? city.districts[sq.district].name : 'quartier'})`);
   for (const i of city.inns) L.push(`- **Auberge « ${i.name} »**, près ${i.near}`);
   L.push('');
+
+  // --- Eau et hors les murs ---
+  const extra = [];
+  if (city.canals && city.canals.length) extra.push(`- **Le bief** : un canal dérivé de la rivière fait tourner ${city.mills.map(m => m.name).join(' et ')}.`);
+  for (const isl of city.islands || []) extra.push(`- **${isl.name}** : une île au milieu de la rivière, où se serrent quelques maisons.`);
+  const inhab = city.bridges.filter(b => b.inhabited).length;
+  if (inhab) extra.push(`- **${inhab > 1 ? inhab + ' ponts habités' : 'Un pont habité'}** : des maisons à étages bordent le passage, au-dessus de l'eau.`);
+  const OUT = { church: 'église du faubourg, pour ceux qui vivent hors les murs', leper: 'à l’écart sur la route, on y tient les lépreux loin de la ville', gallows: 'fourches patibulaires sur la hauteur, bien visibles de la route : la justice du seigneur', tannery: 'en aval, au bord de l’eau, là où l’odeur ne gêne personne en ville', watermill: 'sur la rivière, en amont' };
+  for (const o of city.outskirts || []) extra.push(`- **${o.label}** : ${OUT[o.kind] || ''}.`);
+  if (extra.length) { L.push('## Eau et hors les murs', ''); extra.forEach(x => L.push(x)); L.push(''); }
 
   // --- Rues ---
   L.push('## Rues', '');

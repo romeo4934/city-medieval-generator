@@ -29,6 +29,7 @@ function normalize(o) {
     twin: ['non', 'oui', 'auto'].includes(o.twin) ? o.twin : 'non',
     ledges: ['auto', 'oui', 'non'].includes(o.ledges) ? o.ledges : 'auto',
     hillType: ['auto', 'butte', 'crete', 'eperon', 'table', 'dissymetrique'].includes(o.hillType) ? o.hillType : 'auto',
+    valleyType: ['auto', 'large', 'gorge', 'confluence', 'meandre'].includes(o.valleyType) ? o.valleyType : 'auto',
     buildings: Array.isArray(o.buildings) ? o.buildings.filter(id => BUILDINGS.some(b => b.id === id)) : DEFAULT_BUILDINGS.slice(),
     names: Array.isArray(o.names) ? o.names.map(n => String(n || '')) : [],
     cityName: String(o.cityName || ''),
@@ -48,6 +49,7 @@ function readHash() {
     twin: p.get('haute'),
     ledges: p.get('ressauts'),
     hillType: p.get('forme'),
+    valleyType: p.get('vallee'),
     buildings: p.has('bat') ? p.get('bat').split(',').filter(Boolean) : undefined,
     names: p.has('noms') ? p.get('noms').split('|') : [],
     cityName: p.get('nom'),
@@ -56,7 +58,7 @@ function readHash() {
 
 function writeHash(o) {
   const p = new URLSearchParams({
-    graine: o.seed, taille: o.size, riviere: o.river, relief: o.relief, age: o.age, plan: o.plan, enceinte: o.walls, haute: o.twin, ressauts: o.ledges, forme: o.hillType, bat: o.buildings.join(','),
+    graine: o.seed, taille: o.size, riviere: o.river, relief: o.relief, age: o.age, plan: o.plan, enceinte: o.walls, haute: o.twin, ressauts: o.ledges, forme: o.hillType, vallee: o.valleyType, bat: o.buildings.join(','),
   });
   if (o.cityName) p.set('nom', o.cityName);
   if (mapView !== 'plan') p.set('vue', mapView);
@@ -77,14 +79,30 @@ function fromControls() {
     twin: $('twin').value,
     ledges: $('ledges').value,
     hillType: $('hillType').value,
+    valleyType: $('valleyType').value,
     buildings: [...document.querySelectorAll('#buildings input:checked')].map(i => i.value),
   };
 }
 
 // ---------- génération ----------
 
+// Calcul en arrière-plan (Web Worker) ; si le navigateur le refuse (fichier ouvert depuis le disque), calcul direct
+let worker = null, jobId = 0;
+try { worker = new Worker('worker.js'); worker.onerror = () => { worker = null; }; } catch (e) { worker = null; }
+const compute = o => new Promise((resolve, reject) => {
+  if (!worker) { try { resolve(generateCity(o)); } catch (e) { reject(e); } return; }
+  const id = ++jobId;
+  const onMsg = e => {
+    if (e.data.id !== id) return;
+    worker.removeEventListener('message', onMsg);
+    if (e.data.error) reject(new Error(e.data.error)); else resolve(e.data.city);
+  };
+  worker.addEventListener('message', onMsg);
+  worker.postMessage({ id, opts: o });
+});
+let latest = 0;
+
 function build(o) {
-  const previousE = current && current.E;
   opts = normalize(o);
   $('seed').value = opts.seed;
   $('size').value = opts.size;
@@ -96,10 +114,26 @@ function build(o) {
   $('twin').value = opts.twin;
   $('ledges').value = opts.ledges;
   $('hillType').value = opts.hillType;
+  $('valleyType').value = opts.valleyType;
   document.querySelectorAll('#buildings input').forEach(i => { i.checked = opts.buildings.includes(i.value); });
   writeHash(opts);
+  const ticket = ++latest;
+  $('busy').hidden = false;
+  compute(opts).then(city => {
+    if (ticket !== latest) return;   // une demande plus récente est en cours
+    $('busy').hidden = true;
+    show(city);
+  }).catch(err => {
+    $('busy').hidden = true;
+    console.error(err);
+    if (worker) { worker = null; build(o); }   // repli : calcul direct
+  });
+}
 
-  current = generateCity(opts);
+// Affiche une ville calculée
+function show(city) {
+  const previousE = current && current.E;
+  current = city;
   $('cityName').value = opts.cityName;
   $('cityName').placeholder = current.autoName;
   drawMap();
@@ -130,6 +164,7 @@ function build(o) {
 
 // Dessine la ville dans la vue choisie, sans la régénérer
 function drawMap() {
+  if (!current) return;
   $('map').innerHTML = renderSVG(current, { view: mapView });
   document.querySelectorAll('.views button').forEach(b => b.classList.toggle('on', b.dataset.view === mapView));
   if (view) applyView();
@@ -294,7 +329,7 @@ $('random').onclick = () => { view = null; build({ ...fromControls(), seed: rand
 $('apply').onclick = () => build(fromControls());
 $('seed').onkeydown = e => { if (e.key === 'Enter') { view = null; build({ ...fromControls(), names: [], cityName: '' }); } };
 $('size').onchange = () => build({ ...fromControls(), names: [] });
-$('river').onchange = $('relief').onchange = $('age').onchange = $('plan').onchange = $('walls').onchange = $('twin').onchange = $('ledges').onchange = $('hillType').onchange = () => build(fromControls());
+$('river').onchange = $('relief').onchange = $('age').onchange = $('plan').onchange = $('walls').onchange = $('twin').onchange = $('ledges').onchange = $('hillType').onchange = $('valleyType').onchange = () => build(fromControls());
 $('buildings').addEventListener('change', () => build(fromControls()));
 
 window.addEventListener('hashchange', () => build(readHash()));

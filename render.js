@@ -13,6 +13,11 @@ const COLORS = {
   treeLine: '#8a9666',
   stall: '#d9b98e',
   townGround: '#e7e1cd',
+  forest: '#b9c79c',
+  forestDark: '#9fb184',
+  mainStreet: '#fdfaf2',
+  mainEdge: '#9c8e72',
+  alley: '#ece6d6',
   dryMoat: '#d4d3b4',
   lices: '#e6e1cf',
   hall: '#b88f62',
@@ -299,6 +304,12 @@ function renderSVG(city, options = {}) {
   // Champs en lanières : trois cultures, sillons visibles
   ['field1', 'field2', 'field3'].forEach((k, i) => fill(city.fieldStrips[i], k, ` stroke="${COLORS.fieldLine}" stroke-width="0.6"`));
   fill(city.meadows, 'meadow');
+  // Forêts : couronnes d'arbres serrées (une tache par case), puis quelques cimes plus sombres
+  if (city.forest && city.forest.length) {
+    const fr = (city.forestCell || 22) * 0.78;
+    out.push(`<path d="${city.forest.map(([x, y]) => `M${n1(x - fr)} ${n1(y)}a${n1(fr)} ${n1(fr)} 0 1 0 ${n1(2 * fr)} 0a${n1(fr)} ${n1(fr)} 0 1 0 ${n1(-2 * fr)} 0`).join('')}" fill="${COLORS.forest}"/>`);
+    out.push(`<path d="${city.forest.map(([x, y], i) => { const r = 4 + (i % 3); return `M${n1(x - r + (i % 5) - 2)} ${n1(y + (i % 7) - 3)}a${r} ${r} 0 1 0 ${2 * r} 0a${r} ${r} 0 1 0 ${-2 * r} 0`; }).join('')}" fill="${COLORS.forestDark}"/>`);
+  }
   fill(city.suburbGround, 'garden');
   fill(city.vineyards, 'url(#cmg-vines)');
 
@@ -311,9 +322,17 @@ function renderSVG(city, options = {}) {
   // rempart, puis la berme (bande de terre au pied du mur) ; l'intérieur est ensuite recouvert par la ville.
   if (city.moat) {
     const H = city.moat.outer, wallD = pathD([city.wall]);
-    const edge = city.moat.water ? COLORS.waterLine : COLORS.dryMoatLine, body = city.moat.water ? COLORS.water : COLORS.dryMoat;
-    out.push(`<path d="${wallD}" fill="none" stroke="${edge}" stroke-width="${n1(2 * H + 3)}" stroke-linejoin="round"/>`);
-    out.push(`<path d="${wallD}" fill="none" stroke="${body}" stroke-width="${n1(2 * H)}" stroke-linejoin="round"/>`);
+    // Tronçons en eau (en bas) et à sec (sur les hauteurs)
+    const segs = city.moat.segs || city.wall.map((p, i) => ({ a: p, b: city.wall[(i + 1) % city.wall.length], water: city.moat.water }));
+    for (const water of [false, true]) {
+      const d = segs.filter(sg => sg.water === water).map(sg => lineD([sg.a, sg.b])).join('');
+      if (!d) continue;
+      out.push(`<path d="${d}" fill="none" stroke="${water ? COLORS.waterLine : COLORS.dryMoatLine}" stroke-width="${n1(2 * H + 3)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    }
+    for (const water of [false, true]) {
+      const d = segs.filter(sg => sg.water === water).map(sg => lineD([sg.a, sg.b])).join('');
+      if (d) out.push(`<path d="${d}" fill="none" stroke="${water ? COLORS.water : COLORS.dryMoat}" stroke-width="${n1(2 * H)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    }
     out.push(`<path d="${wallD}" fill="none" stroke="${COLORS.meadow}" stroke-width="${n1(2 * (H - city.moat.width))}" stroke-linejoin="round"/>`);
     if (city.moat.lices) {
       // Double enceinte : le mur extérieur (plus bas) puis les lices, bande de terre entre les deux murs
@@ -330,21 +349,78 @@ function renderSVG(city, options = {}) {
   fill(city.ground.yard, 'yard');
   fill(city.ground.garden, 'garden');
   fill(city.terraces, 'url(#cmg-vines)');
+  // Pentes trop raides pour bâtir (près de la ville) : rangées de vigne en terrasses, le long des courbes de niveau
+  if (city.terrain && !city.terrain.flat) {
+    const T = city.terrain, segs = [];
+    const slopeAtGrid = p => { const i = Math.round((p[0] + T.E) / T.step), j = Math.round((p[1] + T.E) / T.step); return T.slope[Math.max(0, Math.min(T.G, j)) * (T.G + 1) + Math.max(0, Math.min(T.G, i))]; };
+    for (const l of contourLevels(T, 5)) for (const sg of contourSegments(T, l)) {
+      const m = [(sg[0][0] + sg[1][0]) / 2, (sg[0][1] + sg[1][1]) / 2], sl = slopeAtGrid(m);
+      if (sl > T.max && sl < 70 && Math.hypot(m[0], m[1]) < city.R * 1.8) segs.push(sg);   // pas de vigne sur les falaises
+    }
+    if (segs.length) out.push(`<path d="${segs.map(sg => lineD(sg)).join('')}" fill="none" stroke="${COLORS.vineDot}" stroke-opacity=".75" stroke-width="1.2" stroke-dasharray="1 3" stroke-linecap="round"/>`);
+  }
 
   // Rivières : berge puis eau
   const riverD = city.rivers.map(rv => lineD(rv.points));
   city.rivers.forEach((rv, k) => out.push(`<path d="${riverD[k]}" fill="none" stroke="${COLORS.waterLine}" stroke-width="${n1(rv.w + 3)}" stroke-linecap="round" stroke-linejoin="round"/>`));
   city.rivers.forEach((rv, k) => out.push(`<path d="${riverD[k]}" fill="none" stroke="${COLORS.water}" stroke-width="${n1(rv.w)}" stroke-linecap="round" stroke-linejoin="round"/>`));
 
+  // Biefs de moulin et îles
+  for (const cn of city.canals || []) {
+    out.push(`<path d="${lineD(cn.points)}" fill="none" stroke="${COLORS.waterLine}" stroke-width="${n1(cn.w + 2)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+    out.push(`<path d="${lineD(cn.points)}" fill="none" stroke="${COLORS.water}" stroke-width="${n1(cn.w)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+  }
+  for (const isl of city.islands || []) {
+    fill([isl.water], 'water', ` stroke="${COLORS.waterLine}" stroke-width="1.2"`);
+    fill([isl.land], 'townGround', ` stroke="${COLORS.waterLine}" stroke-width="1"`);
+  }
+
   // Rues : chaque rue avec sa vraie largeur (bordure d'abord pour que les croisements se fondent)
   const net = city.streetNet || [];
   const widthOf = cls => 2 * ((city.streetHalf || {})[cls] || 3);
   const byCls = new Map();
   for (const st of net) { if (!byCls.has(st.cls)) byCls.set(st.cls, []); byCls.get(st.cls).push(lineD(st.points)); }
-  for (const [cls, ds] of byCls) out.push(`<path d="${ds.join('')}" fill="none" stroke="${COLORS.roadEdge}" stroke-width="${n1(widthOf(cls) + 1.6)}" stroke-linecap="round" stroke-linejoin="round"/>`);
-  for (const [cls, ds] of byCls) out.push(`<path d="${ds.join('')}" fill="none" stroke="${COLORS.street}" stroke-width="${n1(widthOf(cls))}" stroke-linecap="round" stroke-linejoin="round"/>`);
+  // Hiérarchie : grandes rues larges, claires et bien bordées ; ruelles étroites, plus sombres, sans bordure
+  const ORDER = ['ruelle', 'rue', 'quai', 'boulevard', 'road', 'main'];
+  const EDGE = { main: [COLORS.mainEdge, 2.4], road: [COLORS.roadEdge, 2], boulevard: [COLORS.mainEdge, 2], quai: [COLORS.roadEdge, 1.4], rue: [COLORS.roadEdge, 1.2], ruelle: [null, 0] };
+  const FILL = { main: COLORS.mainStreet, road: COLORS.street, boulevard: COLORS.mainStreet, quai: COLORS.street, rue: COLORS.street, ruelle: COLORS.alley };
+  const clsList = [...byCls.keys()].sort((a, b) => ORDER.indexOf(a) - ORDER.indexOf(b));
+  for (const cls of clsList) { const [c, w] = EDGE[cls] || [COLORS.roadEdge, 1.2]; if (c) out.push(`<path d="${byCls.get(cls).join('')}" fill="none" stroke="${c}" stroke-width="${n1(widthOf(cls) + w)}" stroke-linecap="round" stroke-linejoin="round"/>`); }
+  for (const cls of clsList) out.push(`<path d="${byCls.get(cls).join('')}" fill="none" stroke="${FILL[cls] || COLORS.street}" stroke-width="${n1(widthOf(cls))}" stroke-linecap="round" stroke-linejoin="round"/>`);
   for (const b of city.bridges) {
-    out.push(`<rect x="${n1(-b.length / 2)}" y="-6" width="${n1(b.length)}" height="12" fill="${COLORS.street}" stroke="${COLORS.buildingLine}" stroke-width="1.5" transform="translate(${n1(b.x)} ${n1(b.y)}) rotate(${n1(b.angle)})"/>`);
+    const tr = `translate(${n1(b.x)} ${n1(b.y)}) rotate(${n1(b.angle)})`;
+    if (b.inhabited) {
+      // Pont habité : deux rangées de petites maisons de part et d'autre du passage
+      out.push(`<rect x="${n1(-b.length / 2)}" y="-11" width="${n1(b.length)}" height="22" fill="${COLORS.street}" stroke="${COLORS.buildingLine}" stroke-width="1.5" transform="${tr}"/>`);
+      const hs = [];
+      for (let x = -b.length / 2 + 1; x < b.length / 2 - 3; x += 5) for (const y of [-10.5, 4.5]) hs.push(`M${n1(x)} ${y}h4.4v6h-4.4Z`);
+      out.push(`<path d="${hs.join('')}" fill="${COLORS.tile}" stroke="${COLORS.buildingLine}" stroke-width="0.5" transform="${tr}"/>`);
+    } else {
+      out.push(`<rect x="${n1(-b.length / 2)}" y="-6" width="${n1(b.length)}" height="12" fill="${COLORS.street}" stroke="${COLORS.buildingLine}" stroke-width="1.5" transform="${tr}"/>`);
+    }
+  }
+  // Moulins sur les biefs : le bâtiment à cheval sur l'eau et sa roue
+  for (const m of city.mills || []) {
+    const ang = (Math.atan2(m.axis[1], m.axis[0]) * 180) / Math.PI;
+    out.push(`<g transform="translate(${n1(m.at[0])} ${n1(m.at[1])}) rotate(${n1(ang)})"><rect x="-5" y="-6" width="10" height="12" fill="${COLORS.building}" stroke="${COLORS.buildingLine}" stroke-width="1"/><path d="M-7 -4V4M7 -4V4" stroke="${COLORS.buildingLine}" stroke-width="1.6"/></g>`);
+  }
+  // Hors les murs
+  for (const o of city.outskirts || []) {
+    const ang = (Math.atan2(o.axis[1], o.axis[0]) * 180) / Math.PI, tr = `translate(${n1(o.at[0])} ${n1(o.at[1])}) rotate(${n1(ang)})`;
+    if (o.kind === 'church') {
+      fill([o.poly], 'garden', ` stroke="${COLORS.fence}" stroke-width="0.8"`);
+      out.push(`<g transform="${tr}"><rect x="-9" y="-3.5" width="16" height="7" fill="${COLORS.church}" stroke="${COLORS.buildingLine}" stroke-width="1"/><circle cx="7" cy="0" r="3.5" fill="${COLORS.church}" stroke="${COLORS.buildingLine}" stroke-width="1"/><rect x="-13" y="-2.5" width="5" height="5" fill="${COLORS.church}" stroke="${COLORS.buildingLine}" stroke-width="1"/></g>`);
+    } else if (o.kind === 'leper') {
+      fill([o.poly], 'garden', ` stroke="${COLORS.fence}" stroke-width="1"`);
+      out.push(`<g transform="${tr}"><rect x="-18" y="-12" width="22" height="7" fill="${COLORS.thatch}" stroke="${COLORS.buildingLine}" stroke-width="0.8"/><rect x="-18" y="4" width="22" height="7" fill="${COLORS.thatch}" stroke="${COLORS.buildingLine}" stroke-width="0.8"/><rect x="8" y="-4" width="10" height="7" fill="${COLORS.church}" stroke="${COLORS.buildingLine}" stroke-width="0.8"/></g>`);
+    } else if (o.kind === 'gallows') {
+      out.push(`<g transform="${tr}" stroke="${COLORS.ink}" stroke-width="1.6"><path d="M-4 -2V2M4 -2V2M-4 0H4"/></g>`);
+    } else if (o.kind === 'tannery') {
+      fill([o.poly], 'quay');
+      out.push(`<g transform="${tr}"><rect x="-18" y="-6" width="11" height="9" fill="${COLORS.tile}" stroke="${COLORS.buildingLine}" stroke-width="0.8"/><rect x="-4" y="-6" width="11" height="9" fill="${COLORS.tile}" stroke="${COLORS.buildingLine}" stroke-width="0.8"/><path d="M10 -6V5M13 -6V5M16 -6V5M10 -6H16" stroke="${COLORS.buildingLine}" stroke-width="0.6"/></g>`);
+    } else if (o.kind === 'watermill') {
+      out.push(`<g transform="${tr}"><rect x="-5" y="-4" width="10" height="8" fill="${COLORS.building}" stroke="${COLORS.buildingLine}" stroke-width="1"/><path d="M-3 -6.5H3" stroke="${COLORS.buildingLine}" stroke-width="2"/></g>`);
+    }
   }
 
   // Limites de parcelles, murs de jardin, dépendances, arbres
@@ -528,6 +604,9 @@ function renderSVG(city, options = {}) {
   for (const sq of city.squares) textAt('small', fs * 0.68, { at: [sq.at[0], sq.at[1] + fs * 0.9], text: sq.name }, false);
   for (const ch of city.churches) textAt('small', fs * 0.68, { at: ch.at, text: ch.name }, false);
   for (const inn of city.inns) textAt('inn', fs * 0.62, { at: [inn.at[0], inn.at[1] - fs * 0.9], text: inn.name }, false);
+  for (const o of city.outskirts || []) textAt('small', fs * 0.62, { at: [o.at[0], o.at[1] + fs * 1.1], text: o.label }, false);
+  for (const isl of city.islands || []) textAt('small', fs * 0.62, { at: isl.at, text: isl.name }, false);
+  for (const m of city.mills || []) textAt('small', fs * 0.55, { at: [m.at[0], m.at[1] - fs * 0.9], text: m.name }, false);
 
   // Noms de rues, écrits le long de la rue (dans le sens de la lecture)
   const stSize = { main: fs * 0.62, rue: fs * 0.5, ruelle: fs * 0.42, road: fs * 0.55 };

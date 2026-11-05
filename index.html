@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Générateur de villes médiévales</title>
   <link rel="stylesheet" href="style.css">
+  <link rel="icon" href="data:,">
 </head>
 <body>
   <aside>
@@ -85,6 +86,16 @@
       </select>
     </label>
 
+    <label>Forme de la vallée
+      <select id="valleyType">
+        <option value="auto" selected>Au hasard</option>
+        <option value="large">Vallée large</option>
+        <option value="gorge">Gorge étroite</option>
+        <option value="confluence">Confluence de deux vallées</option>
+        <option value="meandre">Méandre (Besançon)</option>
+      </select>
+    </label>
+
     <label>Esplanades et ressauts (falaises entre paliers)
       <select id="ledges">
         <option value="auto" selected>Au hasard (collines)</option>
@@ -144,6 +155,7 @@
       <button data-view="pentes">Pentes</button>
     </div>
     <div id="map"></div>
+    <div id="busy" class="busy" hidden>Génération…</div>
     <div class="zoom">
       <button id="zoomIn" title="Zoomer">+</button>
       <button id="zoomOut" title="Dézoomer">−</button>
@@ -153,6 +165,11 @@
 
   <script src="geo.js"></script>
   <script src="catalog.js"></script>
+  <script src="land.js"></script>
+  <script src="water.js"></script>
+  <script src="outskirts.js"></script>
+  <script src="monuments.js"></script>
+  <script src="names.js"></script>
   <script src="generator.js"></script>
   <script src="lore.js"></script>
   <script src="render.js"></script>

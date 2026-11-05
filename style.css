@@ -171,3 +171,15 @@ main {
 .sheet p { margin: 4px 0; }
 .sheet ul { margin: 4px 0; padding-left: 18px; }
 .sheet li { margin-bottom: 3px; }
+
+.busy {
+  position: absolute;
+  top: 28px;
+  right: 28px;
+  padding: 6px 12px;
+  border-radius: 4px;
+  background: #4a433c;
+  color: #fff;
+  font-size: 13px;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .2);
+}
