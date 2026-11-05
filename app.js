@@ -98,7 +98,7 @@ function fromControls() {
 
 // Calcul en arrière-plan (Web Worker) ; si le navigateur le refuse (fichier ouvert depuis le disque), calcul direct
 let worker = null, jobId = 0;
-try { worker = new Worker('worker.js'); worker.onerror = () => { worker = null; }; } catch (e) { worker = null; }
+try { worker = new Worker('worker.js' + (document.currentScript ? new URL(document.currentScript.src).search : '')); worker.onerror = () => { worker = null; }; } catch (e) { worker = null; }
 const compute = o => new Promise((resolve, reject) => {
   if (!worker) { try { resolve(generateCity(o)); } catch (e) { reject(e); } return; }
   const id = ++jobId;
