@@ -8,7 +8,7 @@
  */
 
 function makeLand(S) {
-  const { E, R, rand, roads, rivers, wallPoly, moatOuter, slopeAt, occupied: houses } = S;
+  const { E, R, rand, roads, rivers, wallPoly, moatOuter, slopeAt, occupied: houses, forest: forestPct = null } = S;
   const between = ([a, b]) => a + rand() * (b - a);
   const dist = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]);
   const norm = v => { const l = Math.hypot(v[0], v[1]) || 1; return [v[0] / l, v[1] / l]; };
@@ -133,7 +133,10 @@ function makeLand(S) {
     const [i, j] = cellOf(p);
     if (i < 0 || j < 0 || i >= GN || j >= GN || occ[j * GN + i]) continue;
     const far = Math.hypot(p[0], p[1]) / R, sl = slopeAt(p);
-    const threshold = 0.35 - (sl > 20 ? 0.45 : 0) - Math.min(0.3, Math.max(0, far - 1.4) * 0.3);
+    // Part de forêt voulue (0 à 100 %) : déplace le seuil du bruit
+    const shift = forestPct === null ? 0 : (50 - forestPct) / 50 * 0.6;
+    const threshold = 0.35 + shift - (sl > 20 ? 0.45 : 0) - Math.min(0.3, Math.max(0, far - 1.4) * 0.3);
+    if (forestPct === 0) continue;
     if (far < 1.3 || noise(p[0], p[1]) < threshold) continue;
     if (sl > 25 && far < 1.8) continue;   // près de la ville, les pentes sont en vignes
     forest.push([p[0], p[1]]);

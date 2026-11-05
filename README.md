@@ -68,6 +68,7 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 
 ## Utilisation
 
+- **Combien ?** : tape le nombre voulu de collines (0 à 5), rivières (0 à 3), portes, enceintes, quartiers, ressauts par colline, placettes, églises, auberges, îles, biefs à moulins, et la part de forêt en %. Une case vide = au hasard. S'il n'y a pas la place (une île sur une rivière trop courte en ville…), l'outil le dit.
 - **Graine** : même graine + mêmes réglages = même ville. Ajouter une rivière ou un bâtiment ne déplace pas le reste.
 - **Zoom** : molette, double-clic (Maj + double-clic pour dézoomer), boutons + / − / ⤢, glisser pour se déplacer.
 - **Enregistrer / Charger** : un petit fichier `.json` avec tous les réglages et les noms.

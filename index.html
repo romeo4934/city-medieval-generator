@@ -28,17 +28,6 @@
           <option value="capitale">Capitale</option>
         </select>
       </label>
-      <label>Rivières
-        <select id="river">
-          <option value="auto" selected>Au hasard</option>
-          <option value="non">Aucune</option>
-          <option value="oui">Une</option>
-          <option value="deux">Deux</option>
-        </select>
-      </label>
-    </div>
-
-    <div class="row">
       <label>Relief
         <select id="relief">
           <option value="auto" selected>Au hasard</option>
@@ -48,15 +37,25 @@
           <option value="vallee">Vallée</option>
         </select>
       </label>
-      <label>Âge de la ville
-        <select id="age">
-          <option value="auto" selected>Au hasard</option>
-          <option value="jeune">Jeune (1 enceinte)</option>
-          <option value="ancienne">Ancienne (2)</option>
-          <option value="tresancienne">Très ancienne (3)</option>
-        </select>
-      </label>
     </div>
+
+    <details open>
+      <summary>Combien ? <span class="muted">(vide = au hasard)</span></summary>
+      <div class="counts">
+        <label>Collines<input type="number" id="nHills" min="0" max="5" placeholder="auto"></label>
+        <label>Rivières<input type="number" id="nRivers" min="0" max="3" placeholder="auto"></label>
+        <label>Portes<input type="number" id="nGates" min="2" max="8" placeholder="auto"></label>
+        <label>Enceintes<input type="number" id="nRings" min="1" max="3" placeholder="auto"></label>
+        <label>Quartiers<input type="number" id="nDistricts" min="2" max="12" placeholder="auto"></label>
+        <label>Ressauts / colline<input type="number" id="nLedges" min="0" max="3" placeholder="auto"></label>
+        <label>Placettes<input type="number" id="nSquares" min="0" max="8" placeholder="auto"></label>
+        <label>Églises<input type="number" id="nChurches" min="0" max="12" placeholder="auto"></label>
+        <label>Auberges<input type="number" id="nInns" min="0" max="10" placeholder="auto"></label>
+        <label>Îles<input type="number" id="nIslands" min="0" max="3" placeholder="auto"></label>
+        <label>Biefs à moulins<input type="number" id="nCanals" min="0" max="3" placeholder="auto"></label>
+        <label>Forêt (%)<input type="number" id="forest" min="0" max="100" placeholder="auto"></label>
+      </div>
+    </details>
 
     <div class="row">
       <label>Plan
@@ -93,14 +92,6 @@
         <option value="gorge">Gorge étroite</option>
         <option value="confluence">Confluence de deux vallées</option>
         <option value="meandre">Méandre (Besançon)</option>
-      </select>
-    </label>
-
-    <label>Esplanades et ressauts (falaises entre paliers)
-      <select id="ledges">
-        <option value="auto" selected>Au hasard (collines)</option>
-        <option value="oui">Oui</option>
-        <option value="non">Non</option>
       </select>
     </label>
 

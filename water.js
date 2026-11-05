@@ -9,7 +9,7 @@ const MILL_NAMES = ['Moulin du Roi', 'Moulin des Chanoines', 'Moulin Neuf', 'Mou
 const ISLAND_NAMES = ['Île aux Moines', 'Île Saint-Clair', 'Île des Tanneurs', 'Île du Pré', 'Île aux Juges', 'Île de la Cité'];
 
 function makeWaterworks(T) {
-  const { rivers, rand, domainAt, slopeAt, addBarrier, cellR } = T;
+  const { rivers, rand, domainAt, slopeAt, addBarrier, cellR, nCanals = 1, nIslands = 1 } = T;
   const norm = v => { const l = Math.hypot(v[0], v[1]) || 1; return [v[0] / l, v[1] / l]; };
   const resample = (pts, step) => {
     const out = [pts[0]];
@@ -27,7 +27,7 @@ function makeWaterworks(T) {
     const P = resample(rv.points, 5);
     const tangent = i => norm([P[Math.min(P.length - 1, i + 2)][0] - P[Math.max(0, i - 2)][0], P[Math.min(P.length - 1, i + 2)][1] - P[Math.max(0, i - 2)][1]]);
     // Bief de moulin : un canal dérivé qui longe la rivière puis la rejoint, avec un ou deux moulins dessus
-    if (ri === 0) for (let tries = 0, made = 0; tries < 30 && made < 1; tries++) {
+    if (ri === 0) for (let tries = 0, made = 0; tries < 30 * Math.max(1, nCanals) && made < nCanals; tries++) {
       const n = 26 + Math.floor(rand() * 10), i0 = Math.floor(rand() * (P.length - n - 1));
       if (i0 < 2) continue;
       const side = rand() < 0.5 ? -1 : 1, off = rv.w / 2 + 16;
@@ -38,6 +38,7 @@ function makeWaterworks(T) {
       }
       const dom = domainAt(pts[Math.floor(n / 2)]);
       if (!pts.every(p => domainAt(p) === dom && slopeAt(p) < 12)) continue;
+      if (canals.some(c2 => c2.points.some(q => pts.some(p => Math.hypot(p[0] - q[0], p[1] - q[1]) < 30)))) continue;
       canals.push({ points: pts, w: 5 });
       addBarrier(pts, 4.5);
       for (const f of [0.38, 0.66]) {
@@ -47,7 +48,7 @@ function makeWaterworks(T) {
       made++;
     }
     // Île : la rivière s'élargit et se partage autour d'une île (en ville, sur la rivière principale)
-    if (ri === 0) for (let tries = 0, made = 0; tries < 40 && made < 1; tries++) {
+    if (ri === 0) for (let tries = 0, made = 0; tries < 40 * Math.max(1, nIslands) && made < nIslands; tries++) {
       const i = 4 + Math.floor(rand() * (P.length - 8));
       if (domainAt(P[i]) !== 'town' || rand() < 0.4) continue;
       const t = tangent(i), len = 45 + rand() * 30, wid = rv.w * 0.9 + 6;
@@ -57,6 +58,7 @@ function makeWaterworks(T) {
       });
       const water = ellipse(len / 2 + 14, wid / 2 + rv.w * 0.9), land = ellipse(len / 2, wid / 2);
       if (!water.every(p => domainAt(p) === 'town')) continue;
+      if (islands.some(o => Math.hypot(o.at[0] - P[i][0], o.at[1] - P[i][1]) < o.len + len)) continue;
       islands.push({ water, land, at: P[i], axis: t, len, wid, name: pick(ISLAND_NAMES, usedIsl) });
       addBarrier([...water, water[0]], 1);
       made++;

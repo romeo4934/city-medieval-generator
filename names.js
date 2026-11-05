@@ -3,7 +3,7 @@
    brèches, auberges, portes d'eau. Dépend de geo.js et catalog.js. */
 
 function nameCity(K) {
-  const { rng, opts, city, streets, bastide, twin, wanted, cityName, churchSpots, districts, zoneOf, cellAt, altitude, baseAlt, reliefHeight, rivers, riverDist, cellR, squares, cliffSegs, oldWalls, verts, domainAt, mainHouses, plaza, gates, edgeCells, cells, wall, wallEdges, ek, dist } = K;
+  const { nInns, rng, opts, city, streets, bastide, twin, wanted, cityName, churchSpots, districts, zoneOf, cellAt, altitude, baseAlt, reliefHeight, rivers, riverDist, cellR, squares, cliffSegs, oldWalls, verts, domainAt, mainHouses, plaza, gates, edgeCells, cells, wall, wallEdges, ek, dist } = K;
     const rNm = rng('noms-rues|' + opts.size);
     const usedNames = new Set();
     const pickFrom = list => {
@@ -130,7 +130,10 @@ function nameCity(K) {
     const targets = [plaza.site, ...gates.map(g => verts[g])];
     const innNames = INN_NAMES.slice();
     const taken = new Set();
-    for (const T of targets.slice(0, 6)) {
+    // Autant d'auberges que demandé : d'abord près des portes et du marché, puis le long des grandes rues
+    const nWanted = nInns !== null && nInns !== undefined ? nInns : Math.min(6, targets.length);
+    while (targets.length < nWanted && mainHouses.length) targets.push(mainHouses[Math.floor(targets.length * 7919 % mainHouses.length)].at);
+    for (const T of targets.slice(0, nWanted)) {
       let best = null, bd = Infinity;
       mainHouses.forEach((h, i) => { if (!taken.has(i) && dist(h.at, T) < bd) { bd = dist(h.at, T); best = i; } });
       if (best === null || bd > cellR * 3) continue;

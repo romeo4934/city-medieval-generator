@@ -17,6 +17,10 @@ $('buildings').innerHTML = BUILDINGS.map(b =>
 
 // ---------- réglages ----------
 
+// Quantités : [option, paramètre d'adresse, min, max] ; vide = au hasard
+const COUNTS = [['nHills', 'n_collines', 0, 5], ['nRivers', 'n_rivieres', 0, 3], ['nGates', 'n_portes', 2, 8], ['nRings', 'n_enceintes', 1, 3], ['nDistricts', 'n_quartiers', 2, 12], ['nLedges', 'n_ressauts', 0, 3], ['nSquares', 'n_placettes', 0, 8], ['nChurches', 'n_eglises', 0, 12], ['nInns', 'n_auberges', 0, 10], ['nIslands', 'n_iles', 0, 3], ['nCanals', 'n_biefs', 0, 3], ['forest', 'foret', 0, 100]];
+const toCount = (v, lo, hi) => (v === null || v === undefined || v === '' || isNaN(+v) ? null : Math.max(lo, Math.min(hi, Math.round(+v))));
+
 function normalize(o) {
   return {
     seed: String(o.seed || randomSeed()),
@@ -28,6 +32,7 @@ function normalize(o) {
     walls: ['simple', 'double', 'auto'].includes(o.walls) ? o.walls : 'simple',
     twin: ['non', 'oui', 'auto'].includes(o.twin) ? o.twin : 'non',
     ledges: ['auto', 'oui', 'non'].includes(o.ledges) ? o.ledges : 'auto',
+    ...Object.fromEntries(COUNTS.map(([k, , lo, hi]) => [k, toCount(o[k], lo, hi)])),
     hillType: ['auto', 'butte', 'crete', 'eperon', 'table', 'dissymetrique'].includes(o.hillType) ? o.hillType : 'auto',
     valleyType: ['auto', 'large', 'gorge', 'confluence', 'meandre'].includes(o.valleyType) ? o.valleyType : 'auto',
     buildings: Array.isArray(o.buildings) ? o.buildings.filter(id => BUILDINGS.some(b => b.id === id)) : DEFAULT_BUILDINGS.slice(),
@@ -38,6 +43,10 @@ function normalize(o) {
 
 function readHash() {
   const p = new URLSearchParams(location.hash.slice(1));
+  // Anciennes adresses : rivières, âge et ressauts étaient des sélecteurs
+  if (!p.has('n_rivieres') && ({ non: 1, oui: 1, deux: 1 })[p.get('riviere')]) p.set('n_rivieres', { non: 0, oui: 1, deux: 2 }[p.get('riviere')]);
+  if (!p.has('n_enceintes') && ({ jeune: 1, ancienne: 1, tresancienne: 1 })[p.get('age')]) p.set('n_enceintes', { jeune: 1, ancienne: 2, tresancienne: 3 }[p.get('age')]);
+  if (!p.has('n_ressauts') && p.get('ressauts') === 'non') p.set('n_ressauts', 0);
   return normalize({
     seed: p.get('graine'),
     size: p.get('taille'),
@@ -48,6 +57,7 @@ function readHash() {
     walls: p.get('enceinte'),
     twin: p.get('haute'),
     ledges: p.get('ressauts'),
+    ...Object.fromEntries(COUNTS.map(([k, h]) => [k, p.get(h)])),
     hillType: p.get('forme'),
     valleyType: p.get('vallee'),
     buildings: p.has('bat') ? p.get('bat').split(',').filter(Boolean) : undefined,
@@ -58,9 +68,10 @@ function readHash() {
 
 function writeHash(o) {
   const p = new URLSearchParams({
-    graine: o.seed, taille: o.size, riviere: o.river, relief: o.relief, age: o.age, plan: o.plan, enceinte: o.walls, haute: o.twin, ressauts: o.ledges, forme: o.hillType, vallee: o.valleyType, bat: o.buildings.join(','),
+    graine: o.seed, taille: o.size, relief: o.relief, plan: o.plan, enceinte: o.walls, haute: o.twin, forme: o.hillType, vallee: o.valleyType, bat: o.buildings.join(','),
   });
   if (o.cityName) p.set('nom', o.cityName);
+  for (const [k, h] of COUNTS) if (o[k] !== null && o[k] !== undefined) p.set(h, o[k]);
   if (mapView !== 'plan') p.set('vue', mapView);
   if (o.names.some(Boolean)) p.set('noms', o.names.join('|'));
   history.replaceState(null, '', '#' + p);
@@ -71,13 +82,12 @@ function fromControls() {
     ...opts,
     seed: $('seed').value.trim() || randomSeed(),
     size: $('size').value,
-    river: $('river').value,
     relief: $('relief').value,
-    age: $('age').value,
     plan: $('plan').value,
     walls: $('walls').value,
     twin: $('twin').value,
-    ledges: $('ledges').value,
+    ...Object.fromEntries(COUNTS.map(([k]) => [k, $(k).value === '' ? null : $(k).value])),
+    river: 'auto', age: 'auto', ledges: 'auto',   // remplacés par les quantités
     hillType: $('hillType').value,
     valleyType: $('valleyType').value,
     buildings: [...document.querySelectorAll('#buildings input:checked')].map(i => i.value),
@@ -106,13 +116,11 @@ function build(o) {
   opts = normalize(o);
   $('seed').value = opts.seed;
   $('size').value = opts.size;
-  $('river').value = opts.river;
   $('relief').value = opts.relief;
-  $('age').value = opts.age;
   $('plan').value = opts.plan;
   $('walls').value = opts.walls;
   $('twin').value = opts.twin;
-  $('ledges').value = opts.ledges;
+  for (const [k] of COUNTS) $(k).value = opts[k] === null ? '' : opts[k];
   $('hillType').value = opts.hillType;
   $('valleyType').value = opts.valleyType;
   document.querySelectorAll('#buildings input').forEach(i => { i.checked = opts.buildings.includes(i.value); });
@@ -153,7 +161,8 @@ function show(city) {
       <dt>Plan</dt><dd>${current.plan === 'bastide' ? 'bastide (damier)' : 'organique'}${current.twin ? ', ville haute + ville basse' : ''}</dd>
       <dt>Enceintes</dt><dd>${s.age}${s.age > 1 ? ' (les anciennes sont en partie démolies)' : ''}</dd>
     </dl>
-    ${s.missing.length ? `<p class="warn">Non placé : ${s.missing.join(', ')}</p>` : ''}`;
+    ${s.missing.length ? `<p class="warn">Non placé : ${s.missing.join(', ')}</p>` : ''}
+    ${s.shortfalls && s.shortfalls.length ? `<p class="warn">Pas assez de place : ${s.shortfalls.join(' ; ')}</p>` : ''}`;
 
   $('sheet').innerHTML = sheetToHtml(citySheet(current));
   $('districts').innerHTML = current.districts.map((d, k) => `
@@ -329,7 +338,8 @@ $('random').onclick = () => { view = null; build({ ...fromControls(), seed: rand
 $('apply').onclick = () => build(fromControls());
 $('seed').onkeydown = e => { if (e.key === 'Enter') { view = null; build({ ...fromControls(), names: [], cityName: '' }); } };
 $('size').onchange = () => build({ ...fromControls(), names: [] });
-$('river').onchange = $('relief').onchange = $('age').onchange = $('plan').onchange = $('walls').onchange = $('twin').onchange = $('ledges').onchange = $('hillType').onchange = $('valleyType').onchange = () => build(fromControls());
+$('relief').onchange = $('plan').onchange = $('walls').onchange = $('twin').onchange = $('hillType').onchange = $('valleyType').onchange = () => build(fromControls());
+for (const [k] of COUNTS) $(k).onchange = () => build(fromControls());
 $('buildings').addEventListener('change', () => build(fromControls()));
 
 window.addEventListener('hashchange', () => build(readHash()));

@@ -22,6 +22,14 @@ function generateCity(opts) {
   // Un tirage par élément : ajouter une rivière ou un bâtiment ne déplace pas le reste
   const rng = tag => mulberry32(seedHash(opts.seed + '|' + tag));
   const autoName = cityName(rng('nom'));
+  // Quantités choisies par l'utilisateur (null = au hasard)
+  const num = (v, lo, hi) => (v === null || v === undefined || v === '' || isNaN(+v) ? null : Math.max(lo, Math.min(hi, Math.round(+v))));
+  const want = {
+    hills: num(opts.nHills, 0, 5), rivers: num(opts.nRivers, 0, 3), gates: num(opts.nGates, 2, 8), rings: num(opts.nRings, 1, 3),
+    districts: num(opts.nDistricts, 2, 12), ledges: num(opts.nLedges, 0, 3), squares: num(opts.nSquares, 0, 8),
+    churches: num(opts.nChurches, 0, 12), inns: num(opts.nInns, 0, 10), islands: num(opts.nIslands, 0, 3), canals: num(opts.nCanals, 0, 3),
+    forest: num(opts.forest, 0, 100),
+  };
   // Options de structure : plan (organique / bastide), enceinte (simple / double), ville haute + ville basse
   const rOpt = rng('structure|' + opts.size);
   const optRolls = [rOpt(), rOpt(), rOpt()];
@@ -113,7 +121,10 @@ function generateCity(opts) {
   // Une seule fonction d'altitude décide de tout : pentes, rivières, citadelle, routes.
   const rT = rng('relief');
   const reliefRoll = rT();
-  const relief = twin && !['colline', 'collines'].includes(opts.relief) ? 'colline'
+  const reliefFromHills = want.hills === null ? null : want.hills === 0 ? 'plaine' : want.hills === 1 ? 'colline' : 'collines';
+  const relief = twin && !['colline', 'collines'].includes(opts.relief) && !(want.hills > 0) ? 'colline'
+    : opts.relief === 'vallee' ? 'vallee'
+    : reliefFromHills && !(twin && want.hills === 0) ? reliefFromHills
     : ['plaine', 'colline', 'collines', 'vallee'].includes(opts.relief) ? opts.relief
     : reliefRoll < 0.28 ? 'plaine' : reliefRoll < 0.6 ? 'colline' : reliefRoll < 0.78 ? 'collines' : 'vallee';
   const hilly = relief === 'colline' || relief === 'collines';
@@ -177,9 +188,9 @@ function generateCity(opts) {
   const hills = [shapeHill({ ...hill, h: 1 }, rForm, mainType)];
   if (relief === 'collines') {
     const rH = rng('collines');
-    const want = 2 + Math.floor(rH() * 3);
+    const wantHills = want.hills !== null ? want.hills - 1 : 2 + Math.floor(rH() * 3);
     const reach = hl => hl.r0 + hl.band;
-    for (let tries = 0; hills.length < want + 1 && tries < 80; tries++) {
+    for (let tries = 0; hills.length < wantHills + 1 && tries < 200; tries++) {
       const a = rH() * Math.PI * 2, d = (0.35 + rH() * 0.9) * R;
       const hl = { c: [Math.cos(a) * d, Math.sin(a) * d], r0: (0.08 + rH() * 0.06) * R, band: (0.15 + rH() * 0.08) * R, h: 0.4 + rH() * 0.5, ph: rH() * 6.28 };
       shapeHill(hl, rH, ['butte', 'crete', 'dissymetrique', 'table'][Math.floor(rH() * 4)]);
@@ -191,11 +202,14 @@ function generateCity(opts) {
   // Esplanades : la colline monte par paliers plats séparés par des ressauts (falaise ou mur de soutènement),
   // comme à Lyon, Édimbourg ou au bord de la ville haute de Provins
   const rL = rng('ressauts');
-  const ledges = ['colline', 'collines'].includes(relief) && (opts.ledges === 'oui' || (opts.ledges === 'auto' && rL() < 0.5));
+  const ledgeRoll = rL();
+  const ledges = ['colline', 'collines'].includes(relief) && (want.ledges !== null ? want.ledges > 0 : opts.ledges === 'oui' || (opts.ledges === 'auto' && ledgeRoll < 0.5));
   if (ledges) hills.forEach((hl, k) => {
-    if (k > 0 && rL() < 0.5) return;
-    const m = rL() < 0.5 ? 1 : 2;
-    hl.steps = m === 1 ? [0.4 + rL() * 0.15] : [0.25 + rL() * 0.1, 0.6 + rL() * 0.12];
+    const skip = rL(), mRoll = rL();
+    if (want.ledges === null && k > 0 && skip < 0.5) return;
+    const m = want.ledges !== null ? want.ledges : mRoll < 0.5 ? 1 : 2;
+    // m ressauts régulièrement répartis sur la pente, avec un peu d'irrégularité
+    hl.steps = Array.from({ length: m }, (_, i) => 0.2 + ((i + 0.5) * 0.6) / m + (rL() - 0.5) * (0.25 / m));
   });
   const LEDGE_W = 0.045;   // largeur du ressaut, en fraction de la pente de la colline (quelques mètres)
   // Repère propre à la colline : tourné, étiré (crête, éperon), et pour un éperon le plateau continue vers l'extérieur
@@ -336,10 +350,10 @@ function generateCity(opts) {
 
   const rR = rng('rivieres');
   const autoCount = rR();
-  let count = opts.river === 'non' ? 0 : opts.river === 'oui' ? 1 : opts.river === 'deux' ? 2
+  let count = want.rivers !== null ? want.rivers : opts.river === 'non' ? 0 : opts.river === 'oui' ? 1 : opts.river === 'deux' ? 2
     : autoCount < 0.4 ? 0 : autoCount < 0.85 ? 1 : 2;
   // Une vallée a sa rivière ; un méandre ou une confluence n'existent que par elle
-  if (relief === 'vallee' && opts.river !== 'non') count = Math.max(count, valley.type === 'confluence' ? 2 : 1);
+  if (relief === 'vallee' && opts.river !== 'non' && want.rivers !== 0) count = Math.max(count, valley.type === 'confluence' ? 2 : 1);
   let a0 = rR() * Math.PI * 2, off0 = (rR() - 0.5) * R * 0.7;
   if (relief === 'vallee') { a0 = vAng + (rR() < 0.5 ? 0 : Math.PI); off0 = vOff; }
   const a1 = a0 + Math.PI / 2 + (rR() - 0.5) * Math.PI / 2, off1 = (rR() - 0.5) * R * 0.6;
@@ -373,11 +387,14 @@ function generateCity(opts) {
     const sp = shortestPaths(riverGraph(new Set()), verts.length, [to]);
     if (from !== to && isFinite(sp.dist[from])) rivers.push({ path: tracePath(sp.prev, from), w: 14 + N * 0.15 });
   }
-  if (count >= 2 && rivers.length) {
+  // Affluents : chacun arrive d'un autre côté et se jette dans la rivière principale
+  for (let t = 1; t < count && rivers.length; t++) {
     const main = rivers[0].path;
-    const mainKeys = new Set(main.slice(1).map((v, k) => ek(main[k], v)));
-    const dir = [Math.cos(a1), Math.sin(a1)], P1 = [-dir[1] * off1, dir[0] * off1];
-    const from = relief === 'vallee' && valley.axes[1] ? nearestEntry(valley.axes[1][1]) : nearestEntry([P1[0] - dir[0] * 2 * E, P1[1] - dir[1] * 2 * E]);
+    const mainKeys = new Set(rivers.flatMap(rv => rv.path.slice(1).map((v, k) => ek(rv.path[k], v))));
+    const at = t === 1 ? a1 : a0 - (a1 - a0) + (rR() - 0.5) * 0.4, ot = t === 1 ? off1 : -off1;
+    const dir = [Math.cos(at), Math.sin(at)], P1 = [-dir[1] * ot, dir[0] * ot];
+    const from = t === 1 && relief === 'vallee' && valley.axes[1] ? nearestEntry(valley.axes[1][1]) : nearestEntry([P1[0] - dir[0] * 2 * E, P1[1] - dir[1] * 2 * E]);
+    if (rivers.some(rv => rv.path.includes(from))) continue;
     const sp = shortestPaths(riverGraph(mainKeys), verts.length, [from]);
     let to = -1;
     for (const v of main) if (!isBorder(v) && isFinite(sp.dist[v]) && (to < 0 || sp.dist[v] < sp.dist[to])) to = v;
@@ -461,7 +478,7 @@ function generateCity(opts) {
   // ================= 6. Âge : enceintes successives =================
   const rA = rng('age|' + opts.size);
   const ageRoll = rA();
-  const age = { jeune: 1, ancienne: 2, tresancienne: 3 }[opts.age] || (bastide ? 1 : 0)
+  const age = want.rings || { jeune: 1, ancienne: 2, tresancienne: 3 }[opts.age] || (bastide ? 1 : 0)
     || (ageRoll < 0.3 ? 1 : ageRoll < (opts.size === 'capitale' || opts.size === 'grande' ? 0.55 : 0.75) ? 2 : 3);
   const fractions = age === 1 ? [1] : age === 2 ? [0.45, 1] : [0.25, 0.55, 1];
   // Une enceinte prend le tracé le plus court à défendre : l'enveloppe convexe de la zone bâtie.
@@ -572,7 +589,8 @@ function generateCity(opts) {
   const rG = rng('portes|' + opts.size);
   const gates = [];
   const base = rG() * Math.PI * 2;
-  for (let g = 0; g < size.gates; g++) {
+  const nGates = want.gates || size.gates;
+  for (let g = 0; g < nGates; g++) {
     const target = base + (g * Math.PI * 2) / size.gates + (rG() - 0.5) * 0.5;
     let best = -1, bd = Infinity;
     for (const vid of candidates) {
@@ -581,7 +599,7 @@ function generateCity(opts) {
       const da = Math.abs((((Math.atan2(v[1], v[0]) - target) % (2 * Math.PI)) + 3 * Math.PI) % (2 * Math.PI) - Math.PI);
       if (da < bd) { bd = da; best = vid; }
     }
-    if (best >= 0 && bd < Math.PI / size.gates) gates.push(best);
+    if (best >= 0 && bd < Math.PI / nGates) gates.push(best);
   }
   // Second passage si la ville manque de portes (versants raides partout) : on accepte une porte
   // face à une pente, la route la contournera
@@ -770,7 +788,7 @@ function generateCity(opts) {
   // ================= 11. Quartiers (chacun dans une seule enceinte) =================
   const rD = rng('quartiers|' + opts.size);
   const town = cells.filter(c => c.inner && !c.citadel);
-  const K = Math.min(size.districts, town.length);
+  const K = Math.min(want.districts || size.districts, town.length);
   const germs = [plaza];
   ringSets.forEach((s, k) => {
     const ringCells = town.filter(c => c.ring === k);
@@ -1147,6 +1165,7 @@ function generateCity(opts) {
   // Eau aménagée : biefs de moulin et îles (obstacles pour les rues et les maisons, voir water.js)
   const waterworks = makeWaterworks({
     rivers: rivers.map(rv => ({ w: rv.w, points: smooth(rv.path.map(id => verts[id]), 3) })), rand: rng('eau|' + opts.size), domainAt, slopeAt, cellR,
+    nCanals: want.canals !== null ? want.canals : 1, nIslands: want.islands !== null ? want.islands : 1,
     addBarrier: (pts, half) => { for (let i = 0; i + 1 < pts.length; i++) addSeg({ a: pts[i], b: pts[i + 1], half, kind: 'river' }); },
   });
   const junctions = [];   // croisements créés par la croissance (pour les placettes)
@@ -1249,9 +1268,9 @@ function generateCity(opts) {
   const squares = [];
   if (!bastide) {
     const rSq = rng('placettes|' + opts.size);
-    const want = Math.max(1, Math.round(N / 9));
+    const wantSq = want.squares !== null ? want.squares : Math.max(1, Math.round(N / 9));
     const cand = junctions.filter(p => domainAt(p) === 'town' && !inReserve(p) && slopeAt(p) < 12);
-    for (let tries = 0; squares.length < want && tries < 60 && cand.length; tries++) {
+    for (let tries = 0; squares.length < wantSq && tries < 60 && cand.length; tries++) {
       const p = cand[Math.floor(rSq() * cand.length)];
       if (squares.some(o => dist(o.at, p) < cellR * 1.6) || dist(p, plaza.site) < cellR * 1.5) continue;
       const r = between(rSq, [9, 13]);
@@ -1291,6 +1310,7 @@ function generateCity(opts) {
     };
     districts.forEach((d, k) => {
       if (d.cells.some(c => c.building && c.building.id === 'temple')) return;
+      if (want.churches !== null && churchSpots.filter(c => c.district >= 0).length >= want.churches) return;
       const poly = tryChurch(d.labelCell.site, 'town', c => c.district === k);
       if (!poly) return;
       const res = { poly, kind: 'church', frontage: false };
@@ -1671,7 +1691,7 @@ function generateCity(opts) {
   // Campagne : champs en lanières le long des routes, prés, forêts (voir land.js)
   {
     const land = makeLand({
-      E, R, rand: rng('campagne|' + opts.size), roads: streets.filter(st => st.cls === 'road').map(st => st.points),
+      E, R, rand: rng('campagne|' + opts.size), roads: streets.filter(st => st.cls === 'road').map(st => st.points), forest: want.forest,
       rivers: city.rivers, wallPoly, moatOuter: moat.outer, slopeAt,
       occupied: [...city.houses.stone, ...city.houses.timber, ...city.houses.thatch, ...city.specials.flatMap(sp => sp.yard), ...city.outskirts.map(o => o.poly)],
     });
@@ -1682,7 +1702,7 @@ function generateCity(opts) {
   }
 
   // ================= 15. Noms : rues, routes, auberges ; ponts, portes, escaliers (voir names.js) =================
-  nameCity({ rng, opts, city, streets, bastide, twin, wanted, cityName, churchSpots, districts, zoneOf, cellAt, altitude, baseAlt, reliefHeight, rivers, riverDist, cellR, squares, cliffSegs, oldWalls, verts, domainAt, mainHouses, plaza, gates, edgeCells, cells, wall, wallEdges, ek, dist });
+  nameCity({ nInns: want.inns, rng, opts, city, streets, bastide, twin, wanted, cityName, churchSpots, districts, zoneOf, cellAt, altitude, baseAlt, reliefHeight, rivers, riverDist, cellR, squares, cliffSegs, oldWalls, verts, domainAt, mainHouses, plaza, gates, edgeCells, cells, wall, wallEdges, ek, dist });
 
   // La citadelle a son étiquette
   if (citadelPoly) {
@@ -1705,5 +1725,14 @@ function generateCity(opts) {
       steepest: Math.round(Math.max(...city.terrain.slope)) },
     missing,
   };
+  // Quantités demandées mais impossibles à placer (manque de place, de rivière…) : on le dit
+  {
+    const got = { hills: hilly ? hills.length : 0, rivers: rivers.length, gates: gates.length, rings: age, districts: city.districts.length,
+      squares: city.squares.length, churches: city.churches.filter(c => c.district >= 0).length, inns: city.inns.length,
+      islands: city.islands.length, canals: city.canals.length };
+    const label = { hills: 'collines', rivers: 'rivières', gates: 'portes', rings: 'enceintes', districts: 'quartiers', squares: 'placettes',
+      churches: 'églises', inns: 'auberges', islands: 'îles', canals: 'biefs' };
+    city.stats.shortfalls = Object.keys(label).filter(k => want[k] !== null && got[k] < want[k]).map(k => `${label[k]} : ${got[k]} sur ${want[k]} demandé${want[k] > 1 ? 's' : ''}`);
+  }
   return city;
 }
