@@ -53,6 +53,19 @@ function citySheet(city) {
   const site = [];
   if (city.relief === 'plaine') site.push(`${city.name} s'étend sur une plaine, sans autre défense que ses murs.`);
   if (city.relief === 'vallee') site.push(`${city.name} occupe le fond d'une vallée ; les versants, trop raides pour bâtir, sont couverts de vignes.`);
+  // Forme de la colline principale, décrite comme sur le terrain
+  const dirFr = v => ['à l’est', 'au sud-est', 'au sud', 'au sud-ouest', 'à l’ouest', 'au nord-ouest', 'au nord', 'au nord-est'][((Math.round(Math.atan2(v[1], v[0]) / (Math.PI / 4)) % 8) + 8) % 8];
+  const H0 = (city.hillShapes || [])[0];
+  if (H0) {
+    const desc = {
+      butte: `une butte isolée d'environ ${H0.height} m, qui se voit de loin`,
+      crete: `une longue crête d'environ ${H0.height} m, orientée ${['est-ouest', 'nord-ouest – sud-est', 'nord-sud', 'nord-est – sud-ouest'][((Math.round(Math.atan2(H0.along[1], H0.along[0]) / (Math.PI / 4)) % 4) + 4) % 4]}`,
+      eperon: `un éperon d'environ ${H0.height} m qui s'avance au-dessus de la vallée, rattaché au plateau ${dirFr(H0.along)}`,
+      table: `une table aux flancs abrupts, d'environ ${H0.height} m, au sommet parfaitement plat`,
+      dissymetrique: `une colline d'environ ${H0.height} m, en pente douce d'un côté mais tombant en falaise ${H0.steepDir ? dirFr(H0.steepDir) : 'de l’autre'}`,
+    }[H0.type];
+    if (desc) site.push(`Le site est marqué par ${desc}.`);
+  }
   if (city.relief === 'colline') site.push(`Une colline domine la ville${city.citadel ? ' : son plateau porte la citadelle, reliée au marché par une montée' : ''}. Ses pentes, trop raides pour bâtir, sont plantées de vignes et de jardins en terrasses.`);
   if (city.relief === 'collines') {
     site.push(`La ville s'est glissée entre plusieurs collines. La plus haute porte ${city.citadel ? 'la citadelle, véritable acropole' : 'les restes d’une ancienne place forte'}.`);

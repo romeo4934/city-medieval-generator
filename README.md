@@ -17,6 +17,7 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 
 **Le relief décide de tout.** Une carte d'altitude (plaine, colline, plusieurs collines comme Athènes ou Rome, ou vallée) détermine :
 - où coulent les **rivières**, qui suivent les creux et ne remontent jamais une colline ;
+- la **forme de la colline**, tirée de sites réels : butte isolée (Vézelay), crête allongée (Nuremberg, Édimbourg), éperon avancé d'un plateau (Provins, Laon), table aux flancs abrupts (Orvieto), colline dissymétrique (douce d'un côté, falaise de l'autre) ; chaque colline a sa hauteur (25 à 120 m), son orientation, son allongement et un contour irrégulier ;
 - où l'on **ne construit pas** : les pentes raides deviennent des vignes ou des jardins en terrasses ;
 - où se dresse la **citadelle** : sur le plateau du sommet, avec sa propre enceinte et une route qui y monte ;
 - avec plusieurs collines, la plus haute porte l'acropole ; les autres, plus basses, gardent leurs pentes en vignes et portent un petit sanctuaire avec leur nom (Mont des Corbeaux, Butte aux Moulins…), et la ville se glisse dans les vallons ;

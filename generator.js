@@ -124,15 +124,35 @@ function generateCity(opts) {
   const valley = { dir: [Math.cos(vAng), Math.sin(vAng)], off: vOff, a: (1.0 + rT() * 0.15) * R, band: 0.4 * R };
   if (twin) { hill.r0 *= 1.7; hill.band *= 0.9; }   // ville haute : un large plateau, comme à Provins
   const smoothstep = t => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
+  // Formes de collines tirées de sites réels : butte isolée (Vézelay), crête allongée (Nuremberg, Édimbourg),
+  // éperon avancé d'un plateau (Provins, Laon, Langres), table aux flancs abrupts (Orvieto, Cordes),
+  // colline dissymétrique (douce d'un côté, falaise de l'autre)
+  const HILL_TYPES = ['butte', 'crete', 'eperon', 'table', 'dissymetrique'];
+  const HILL_HEIGHT = { butte: [30, 75], crete: [40, 90], eperon: [35, 70], table: [25, 55], dissymetrique: [45, 110] };
+  const shapeHill = (hl, rand, type) => {
+    hl.type = type;
+    hl.phi = rand() * Math.PI * 2; hl.ex = 1; hl.asym = 0; hl.asymDir = rand() * Math.PI * 2; hl.spur = false;
+    if (type === 'butte') { hl.ex = 1 + rand() * 0.35; hl.asym = rand() * 0.25; }
+    if (type === 'crete') { hl.ex = 2.2 + rand() * 1.2; hl.r0 *= 0.7; hl.band *= 0.9; }
+    if (type === 'eperon') { hl.ex = 2.5 + rand() * 1; hl.r0 *= 0.75; hl.spur = true; hl.phi = Math.atan2(hl.c[1], hl.c[0]); }   // le plateau s'étend vers l'extérieur
+    if (type === 'table') { hl.ex = 1.1 + rand() * 0.5; hl.r0 *= 1.25; hl.band *= 0.45; }
+    if (type === 'dissymetrique') { hl.ex = 1.2 + rand() * 0.6; hl.asym = 0.65 + rand() * 0.15; }
+    // Contour irrégulier : quelques harmoniques d'amplitude et de phase propres à chaque colline
+    hl.harm = [2, 3, 4, 5, 6].map(k => [k, (rand() * 0.22) / (k - 1), rand() * Math.PI * 2]);
+    return hl;
+  };
+  const rForm = rng('forme-colline');
+  const mainType = HILL_TYPES.includes(opts.hillType) ? opts.hillType : HILL_TYPES[Math.floor(rForm() * HILL_TYPES.length)];
   // Collines : la principale (acropole) + pour "collines" 2 à 4 collines secondaires plus basses
-  const hills = [{ ...hill, h: 1 }];
+  const hills = [shapeHill({ ...hill, h: 1 }, rForm, mainType)];
   if (relief === 'collines') {
     const rH = rng('collines');
     const want = 2 + Math.floor(rH() * 3);
     const reach = hl => hl.r0 + hl.band;
     for (let tries = 0; hills.length < want + 1 && tries < 80; tries++) {
       const a = rH() * Math.PI * 2, d = (0.35 + rH() * 0.9) * R;
-      const hl = { c: [Math.cos(a) * d, Math.sin(a) * d], r0: (0.08 + rH() * 0.06) * R, band: (0.15 + rH() * 0.08) * R, h: 0.55 + rH() * 0.3, ph: rH() * 6.28 };
+      const hl = { c: [Math.cos(a) * d, Math.sin(a) * d], r0: (0.08 + rH() * 0.06) * R, band: (0.15 + rH() * 0.08) * R, h: 0.4 + rH() * 0.5, ph: rH() * 6.28 };
+      shapeHill(hl, rH, ['butte', 'crete', 'dissymetrique', 'table'][Math.floor(rH() * 4)]);
       if (Math.max(Math.abs(hl.c[0]), Math.abs(hl.c[1])) > E - reach(hl)) continue;
       if (hills.some(o => dist(o.c, hl.c) < (reach(o) + reach(hl)) * 0.95)) continue;
       hills.push(hl);
@@ -148,16 +168,26 @@ function generateCity(opts) {
     hl.steps = m === 1 ? [0.4 + rL() * 0.15] : [0.25 + rL() * 0.1, 0.6 + rL() * 0.12];
   });
   const LEDGE_W = 0.045;   // largeur du ressaut, en fraction de la pente de la colline (quelques mètres)
-  const hillShape = (k, th) => {
-    const hl = hills[k];
-    const p0 = k === 0 ? ph[3] : hl.ph, p1 = k === 0 ? ph[4] : hl.ph * 1.7;
-    return 1 + 0.14 * Math.sin(3 * th + p0) + 0.07 * Math.sin(5 * th + p1);
+  // Repère propre à la colline : tourné, étiré (crête, éperon), et pour un éperon le plateau continue vers l'extérieur
+  const hillWob = (hl, te) => 1 + hl.harm.reduce((acc, [k, a, p]) => acc + a * Math.sin(k * te + p), 0);
+  const hillBand = (hl, te) => hl.band * (1 - hl.asym * Math.cos(te - hl.asymDir));   // côté raide = pente courte
+  const hillLocal = (hl, x, y) => {
+    const dx = x - hl.c[0], dy = y - hl.c[1], cp = Math.cos(hl.phi), sp = Math.sin(hl.phi);
+    let xr = dx * cp + dy * sp;
+    let yr = -dx * sp + dy * cp;
+    if (hl.spur && xr > 0) { yr /= 1 + xr / (hl.r0 * 1.5); xr = 0; }   // l'éperon s'élargit en rejoignant le plateau
+    const xe = xr / hl.ex;
+    return { de: Math.hypot(xe, yr), te: Math.atan2(yr, xe) };
+  };
+  const fromLocal = (hl, xe, ye) => {
+    const xr = xe * hl.ex, cp = Math.cos(hl.phi), sp = Math.sin(hl.phi);
+    return [hl.c[0] + xr * cp - ye * sp, hl.c[1] + xr * sp + ye * cp];
   };
   const hillHeight = (k, x, y) => {
     const hl = hills[k];
-    const dx = x - hl.c[0], dy = y - hl.c[1], d = Math.hypot(dx, dy), th = Math.atan2(dy, dx);
-    const wob = hillShape(k, th);
-    const u = (d - hl.r0 * wob) / (hl.band * wob);
+    const { de, te } = hillLocal(hl, x, y);
+    const wob = hillWob(hl, te);
+    const u = (de - hl.r0 * wob) / (hillBand(hl, te) * wob);
     if (!hl.steps) return hl.h * (1 - smoothstep(u));
     // Paliers : 20 % de pente douce + 80 % répartis en ressauts presque verticaux
     let p = 0.2 * (1 - smoothstep(u));
@@ -182,7 +212,8 @@ function generateCity(opts) {
   // Altitudes réelles : la colline (ou les versants) mesure quelques dizaines de mètres ; la plaine est presque plate
   const rAlt = rng('altitude');
   const baseAlt = Math.round(60 + rAlt() * 180);
-  const reliefHeight = relief === 'plaine' ? 6 : relief === 'vallee' ? 55 + rAlt() * 30 : 40 + rAlt() * 40;
+  const hRange = HILL_HEIGHT[mainType], hRoll = rAlt();
+  const reliefHeight = relief === 'plaine' ? 6 : relief === 'vallee' ? 55 + hRoll * 30 : hRange[0] + hRoll * (hRange[1] - hRange[0]);
   const altitude = (x, y) => baseAlt + elev(x, y) * reliefHeight;              // en mètres
   const slopePct = (x, y) => slope(x, y) * reliefHeight * 100;                 // pente en %
   const gradient = (x, y) => [elev(x + 3, y) - elev(x - 3, y), elev(x, y + 3) - elev(x, y - 3)];
@@ -193,10 +224,17 @@ function generateCity(opts) {
   const cliffs = [];
   hills.forEach((hl, k) => (hl.steps || []).forEach(uk => {
     const pts = [];
-    for (let i = 0; i <= 120; i++) {
-      const th = (i / 120) * Math.PI * 2, wob = hillShape(k, th);
-      const d = hl.r0 * wob + (uk - LEDGE_W / 2) * hl.band * wob;
-      pts.push([hl.c[0] + Math.cos(th) * d, hl.c[1] + Math.sin(th) * d]);
+    const dAt = te => { const wob = hillWob(hl, te); return hl.r0 * wob + (uk - LEDGE_W / 2) * hillBand(hl, te) * wob; };
+    if (hl.spur) {
+      // Éperon : la falaise borde les deux flancs et la pointe, et file vers le plateau
+      const d1 = dAt(Math.PI / 2), d2 = dAt(-Math.PI / 2);
+      const widen = x => 1 + x / (hl.r0 * 1.5);
+      const outer = (x, d) => { const cp = Math.cos(hl.phi), sp = Math.sin(hl.phi), y = d * widen(x); return [hl.c[0] + x * cp - y * sp, hl.c[1] + x * sp + y * cp]; };
+      for (let x = 2 * E; x > 0; x -= 20) pts.push(outer(x, d1));
+      for (let i = 0; i <= 60; i++) { const te = Math.PI / 2 + (i / 60) * Math.PI, d = dAt(te); pts.push(fromLocal(hl, Math.cos(te) * d, Math.sin(te) * d)); }
+      for (let x = 0; x <= 2 * E; x += 20) pts.push(outer(x, d2));
+    } else {
+      for (let i = 0; i <= 120; i++) { const te = (i / 120) * Math.PI * 2, d = dAt(te); pts.push(fromLocal(hl, Math.cos(te) * d, Math.sin(te) * d)); }
     }
     cliffs.push({ points: pts, hill: k, center: hl.c, drop: Math.round((0.8 / hl.steps.length) * hl.h * reliefHeight) });
   }));
@@ -1259,7 +1297,10 @@ function generateCity(opts) {
     plaza: [], stalls: [], wells: [], specials: [], labels: [],
     plan: bastide ? 'bastide' : 'organique', twin, doubleWall, arcades: [], halls: [],
     cliffs: cliffs.map(cl => ({ points: cl.points, center: cl.center, drop: cl.drop })), stairs: [],
-    hills: hillNames.map(h => h.name), squares: [], churches: [], inns: [], waterGates: [], streetLabels: [], streets: [], neighbours: [],
+    hills: hillNames.map(h => h.name),
+    hillShapes: hilly ? hills.map((hl, k) => ({ type: hl.type, height: Math.round(hl.h * reliefHeight), name: k === 0 ? null : (hillNames[k - 1] || {}).name,
+      steepDir: hl.asym > 0.4 ? [Math.cos(hl.phi + hl.asymDir), Math.sin(hl.phi + hl.asymDir)] : null, along: [Math.cos(hl.phi), Math.sin(hl.phi)] })) : [],
+    squares: [], churches: [], inns: [], waterGates: [], streetLabels: [], streets: [], neighbours: [],
     gateNames: [],
     districts: districts.map(d => ({
       name: d.name, auto: d.auto, ring: d.ring, zone: zoneOf(d.cells[0]), size: d.cells.length,

@@ -28,6 +28,7 @@ function normalize(o) {
     walls: ['simple', 'double', 'auto'].includes(o.walls) ? o.walls : 'simple',
     twin: ['non', 'oui', 'auto'].includes(o.twin) ? o.twin : 'non',
     ledges: ['auto', 'oui', 'non'].includes(o.ledges) ? o.ledges : 'auto',
+    hillType: ['auto', 'butte', 'crete', 'eperon', 'table', 'dissymetrique'].includes(o.hillType) ? o.hillType : 'auto',
     buildings: Array.isArray(o.buildings) ? o.buildings.filter(id => BUILDINGS.some(b => b.id === id)) : DEFAULT_BUILDINGS.slice(),
     names: Array.isArray(o.names) ? o.names.map(n => String(n || '')) : [],
     cityName: String(o.cityName || ''),
@@ -46,6 +47,7 @@ function readHash() {
     walls: p.get('enceinte'),
     twin: p.get('haute'),
     ledges: p.get('ressauts'),
+    hillType: p.get('forme'),
     buildings: p.has('bat') ? p.get('bat').split(',').filter(Boolean) : undefined,
     names: p.has('noms') ? p.get('noms').split('|') : [],
     cityName: p.get('nom'),
@@ -54,7 +56,7 @@ function readHash() {
 
 function writeHash(o) {
   const p = new URLSearchParams({
-    graine: o.seed, taille: o.size, riviere: o.river, relief: o.relief, age: o.age, plan: o.plan, enceinte: o.walls, haute: o.twin, ressauts: o.ledges, bat: o.buildings.join(','),
+    graine: o.seed, taille: o.size, riviere: o.river, relief: o.relief, age: o.age, plan: o.plan, enceinte: o.walls, haute: o.twin, ressauts: o.ledges, forme: o.hillType, bat: o.buildings.join(','),
   });
   if (o.cityName) p.set('nom', o.cityName);
   if (mapView !== 'plan') p.set('vue', mapView);
@@ -74,6 +76,7 @@ function fromControls() {
     walls: $('walls').value,
     twin: $('twin').value,
     ledges: $('ledges').value,
+    hillType: $('hillType').value,
     buildings: [...document.querySelectorAll('#buildings input:checked')].map(i => i.value),
   };
 }
@@ -92,6 +95,7 @@ function build(o) {
   $('walls').value = opts.walls;
   $('twin').value = opts.twin;
   $('ledges').value = opts.ledges;
+  $('hillType').value = opts.hillType;
   document.querySelectorAll('#buildings input').forEach(i => { i.checked = opts.buildings.includes(i.value); });
   writeHash(opts);
 
@@ -290,7 +294,7 @@ $('random').onclick = () => { view = null; build({ ...fromControls(), seed: rand
 $('apply').onclick = () => build(fromControls());
 $('seed').onkeydown = e => { if (e.key === 'Enter') { view = null; build({ ...fromControls(), names: [], cityName: '' }); } };
 $('size').onchange = () => build({ ...fromControls(), names: [] });
-$('river').onchange = $('relief').onchange = $('age').onchange = $('plan').onchange = $('walls').onchange = $('twin').onchange = $('ledges').onchange = () => build(fromControls());
+$('river').onchange = $('relief').onchange = $('age').onchange = $('plan').onchange = $('walls').onchange = $('twin').onchange = $('ledges').onchange = $('hillType').onchange = () => build(fromControls());
 $('buildings').addEventListener('change', () => build(fromControls()));
 
 window.addEventListener('hashchange', () => build(readHash()));
