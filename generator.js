@@ -748,10 +748,10 @@ function generateCity(opts) {
   moat.lices = doubleWall ? 14 : 0;
   moat.outer = 3.5 + (doubleWall ? moat.lices + 2.5 : 0) + 3 + moat.width;    // distance du rempart au bord extérieur du fossé
 
-  // ================= 13. Parcellaire fin =================
-  // Chaque quartier bâti est redécoupé en petites cellules. Les îlots sont des assemblages
-  // irréguliers de ces cellules, séparés par les grandes routes puis par des rues et ruelles
-  // tracées à travers les îlots trop grands. Les maisons ne bordent que les rues.
+  // ================= 13. Les rues d'abord =================
+  // Comme dans une vraie ville : les chemins existent avant les maisons. Les grandes rues sont les chemins
+  // les moins pénibles sur le terrain (portes → marché), les rues secondaires poussent depuis elles,
+  // et les maisons s'alignent le long des rues. Les îlots sont simplement ce qui reste entre les rues.
   const between = (r, [a, b]) => a + r() * (b - a);
   const circle = (c, r, n = 36) => Array.from({ length: n }, (_, i) => [c[0] + Math.cos((i / n) * 2 * Math.PI) * r, c[1] + Math.sin((i / n) * 2 * Math.PI) * r]);
   const inradius = poly => {
@@ -764,7 +764,7 @@ function generateCity(opts) {
     const v = [-ax[1], ax[0]];
     return [[-1, -1], [1, -1], [1, 1], [-1, 1]].map(([a, b]) => [c[0] + ax[0] * a * len / 2 + v[0] * b * wid / 2, c[1] + ax[1] * a * len / 2 + v[1] * b * wid / 2]);
   };
-  const inside = (poly, p) => {
+  const inside = (poly, p) => {     // polygone convexe
     const s = Math.sign(Geo.area(poly));
     for (let i = 0; i < poly.length; i++) {
       const A = poly[i], B = poly[(i + 1) % poly.length];
@@ -772,21 +772,14 @@ function generateCity(opts) {
     }
     return true;
   };
-  // Distance jusqu'à la sortie d'un polygone convexe en partant de P dans la direction d
-  const rayExit = (poly, P, d) => {
-    let best = Infinity;
-    for (let i = 0; i < poly.length; i++) {
-      const A = poly[i], B = poly[(i + 1) % poly.length];
-      const ex = B[0] - A[0], ey = B[1] - A[1];
-      const den = d[0] * ey - d[1] * ex;
-      if (Math.abs(den) < 1e-9) continue;
-      const t = ((A[0] - P[0]) * ey - (A[1] - P[1]) * ex) / den;
-      const s = ((A[0] - P[0]) * d[1] - (A[1] - P[1]) * d[0]) / den;
-      if (t > 0.05 && s >= -1e-6 && s <= 1 + 1e-6) best = Math.min(best, t);
+  const inPoly = (poly, p) => {     // polygone quelconque (lancer de rayon)
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const a = poly[i], b = poly[j];
+      if ((a[1] > p[1]) !== (b[1] > p[1]) && p[0] < ((b[0] - a[0]) * (p[1] - a[1])) / (b[1] - a[1]) + a[0]) c = !c;
     }
-    return best;
+    return c;
   };
-  // Découpe un polygone convexe en bandes parallèles (champs, entrepôts)
   const stripCut = (poly, dir, widths, rand) => {
     const n = [-dir[1], dir[0]];
     const ts = poly.map(p => p[0] * n[0] + p[1] * n[1]);
@@ -800,363 +793,463 @@ function generateCity(opts) {
     }
     return out;
   };
-  const voronoiIn = (pts, poly) => pts.map((s, i) => {
-    let p = poly;
-    for (let j = 0; j < pts.length && p.length >= 3; j++) {
-      if (j === i) continue;
-      const t = pts[j];
-      p = Geo.clip(p, (s[0] + t[0]) / 2, (s[1] + t[1]) / 2, s[0] - t[0], s[1] - t[1]);
-    }
-    return p;
-  });
+  const norm = v => { const l = Math.hypot(v[0], v[1]) || 1; return [v[0] / l, v[1] / l]; };
+  const polyLen = pts => pts.reduce((acc, p, i) => (i ? acc + dist(pts[i - 1], p) : 0), 0);
+  // Point d'intersection de deux segments (ou null)
+  const segHit = (a, b, c, d) => {
+    const den = (b[0] - a[0]) * (d[1] - c[1]) - (b[1] - a[1]) * (d[0] - c[0]);
+    if (Math.abs(den) < 1e-9) return null;
+    const t = ((c[0] - a[0]) * (d[1] - c[1]) - (c[1] - a[1]) * (d[0] - c[0])) / den;
+    const u = ((c[0] - a[0]) * (b[1] - a[1]) - (c[1] - a[1]) * (b[0] - a[0])) / den;
+    return t >= 0 && t <= 1 && u >= 0 && u <= 1 ? { t, u, at: [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t] } : null;
+  };
+  // Simplification (Douglas-Peucker) puis lissage d'une ligne
+  const simplify = (pts, tol) => {
+    if (pts.length < 3) return pts;
+    let best = 0, bi = 0;
+    for (let i = 1; i < pts.length - 1; i++) { const d = Geo.distToSegment(pts[i], pts[0], pts[pts.length - 1]); if (d > best) { best = d; bi = i; } }
+    if (best < tol) return [pts[0], pts[pts.length - 1]];
+    return simplify(pts.slice(0, bi + 1), tol).slice(0, -1).concat(simplify(pts.slice(bi), tol));
+  };
 
   const zoneOf = c => {
+    if (!c) return 'faubourg';
     if (c.citadel) return twin ? 'vieille' : 'citadelle';   // une ville haute est une vraie ville, dense et en pierre
     if (!c.inner) return 'faubourg';
     if (age === 1) return 'bourg';
     if (c.ring === 0) return 'vieille';
     return c.ring === lastRing ? 'neuf' : 'bourg';
   };
-  const isSuburb = c => !c.inner && !c.citadel && !c.steep && !c.building && c.type !== 'plaza'
-    && touches(c, roadEdges) && dC(c) < 1.5 * R && !touchesBorder(c);
-  const isFine = c => !c.building && (c.type !== 'plaza' || bastide) && !c.steep && (c.inner || c.citadel || isSuburb(c));
-  const domainOf = c => (c.citadel ? 'cit' : c.inner ? 'town' : 'sub');
-  const FINE_AREA = { vieille: 1300, bourg: 1800, neuf: 2400, faubourg: 2400, citadelle: 2000 };
 
-  // --- cellules fines ---
-  const fverts = [], fgrid = new Map();
-  const fweld = p => {
-    const gx = Math.floor(p[0]), gy = Math.floor(p[1]);
-    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) {
-      const list = fgrid.get((gx + dx) + ',' + (gy + dy));
-      if (list) for (const id of list) {
-        const v = fverts[id];
-        if (Math.abs(v[0] - p[0]) < 0.3 && Math.abs(v[1] - p[1]) < 0.3) return id;
-      }
-    }
-    const id = fverts.length;
-    fverts.push([p[0], p[1]]);
-    const k = gx + ',' + gy;
-    if (!fgrid.has(k)) fgrid.set(k, []);
-    fgrid.get(k).push(id);
-    return id;
+  // --- Domaines : la ville (intra-muros) et la ville haute / citadelle ---
+  const wallPoly = wall.map(id => verts[id]);
+  const citadelPoly = citadelSet.size ? loopOf(boundary(citadelSet)).map(id => verts[id]) : null;
+  const inCitadel = p => !!citadelPoly && inPoly(citadelPoly, p);
+  const inTown = p => inPoly(wallPoly, p) && !inCitadel(p);
+  const domainAt = p => (inCitadel(p) ? 'cit' : inPoly(wallPoly, p) ? 'town' : 'out');
+  const cellCache = new Map();
+  const cellAt = p => {
+    const key = Math.round(p[0] / 6) + ',' + Math.round(p[1] / 6);
+    if (cellCache.has(key)) return cellCache.get(key);
+    const c = cellAtRaw(p);
+    cellCache.set(key, c);
+    return c;
   };
-  const fcells = [];
-  const childrenOf = new Map();
-  // Bastide : un damier d'îlots rectangulaires centré sur la place, orienté au hasard
+  const cellAtRaw = p => {
+    const near = cells.map(c => [c, dist(c.site, p)]).sort((a, b) => a[1] - b[1]).slice(0, 8);
+    for (const [c] of near) if (c.ids.length >= 3 && inside(c.ids.map(id => verts[id]), p)) return c;
+    return near[0][0];
+  };
+
+  // --- Réserves : zones où l'on ne trace pas de rue et ne bâtit pas de maison ---
+  const reserves = [];
+  const inReserve = p => reserves.some(r => inPoly(r.poly, p));
+  const reserveOf = p => reserves.find(r => inPoly(r.poly, p));
+
+  // Bastide : le damier, centré sur la place
   const rB = rng('bastide|' + opts.size);
   const lat = { th: rB() * Math.PI, a: between(rB, [30, 38]), b: between(rB, [55, 72]) };
   lat.u = [Math.cos(lat.th), Math.sin(lat.th)]; lat.v = [-lat.u[1], lat.u[0]];
   lat.o = [plaza.site[0] - lat.u[0] * lat.a / 2 - lat.v[0] * lat.b / 2, plaza.site[1] - lat.u[1] * lat.a / 2 - lat.v[1] * lat.b / 2];
-  const latRect = (i, j) => [[i, j], [i + 1, j], [i + 1, j + 1], [i, j + 1]].map(([x, y]) =>
-    [lat.o[0] + lat.u[0] * x * lat.a + lat.v[0] * y * lat.b, lat.o[1] + lat.u[1] * x * lat.a + lat.v[1] * y * lat.b]);
+  const latPoint = (x, y) => [lat.o[0] + lat.u[0] * x * lat.a + lat.v[0] * y * lat.b, lat.o[1] + lat.u[1] * x * lat.a + lat.v[1] * y * lat.b];
+
+  // Place du marché : un quadrilatère irrégulier orienté vers la porte principale (rectangle exact dans une bastide)
+  const rMk = rng('marche|' + opts.size);
+  let marketPoly;
+  if (bastide) marketPoly = [latPoint(0, 0), latPoint(1, 0), latPoint(1, 1), latPoint(0, 1)];
+  else {
+    const g0 = gates.length ? verts[gates[0]] : [plaza.site[0] + 1, plaza.site[1]];
+    const ax = norm([g0[0] - plaza.site[0], g0[1] - plaza.site[1]]);
+    const w = 30 + N * 0.35, h = w * between(rMk, [1.15, 1.5]);
+    marketPoly = rect(plaza.site, ax, h, w).map(p => [p[0] + (rMk() - 0.5) * 8, p[1] + (rMk() - 0.5) * 8]);
+  }
+  reserves.push({ poly: marketPoly, kind: 'market', frontage: true });
+  // Enclos des monuments (cathédrale, château…) : autour de leur emplacement, dans la ville
+  const precinctOf = new Map();
   for (const c of cells) {
-    if (!isFine(c)) continue;
+    if (!c.building) continue;
     const poly = c.ids.map(id => verts[id]);
     if (poly.length < 3) continue;
-    const zone = zoneOf(c);
-    if (bastide && c.inner && !c.citadel) {
-      const kids = [];
-      const us = poly.map(p => ((p[0] - lat.o[0]) * lat.u[0] + (p[1] - lat.o[1]) * lat.u[1]) / lat.a);
-      const vs = poly.map(p => ((p[0] - lat.o[0]) * lat.v[0] + (p[1] - lat.o[1]) * lat.v[1]) / lat.b);
-      for (let i = Math.floor(Math.min(...us)); i <= Math.floor(Math.max(...us)); i++) {
-        for (let j = Math.floor(Math.min(...vs)); j <= Math.floor(Math.max(...vs)); j++) {
-          // rectangle du damier ∩ quartier (deux polygones convexes)
-          const rc = latRect(i, j);
-          let pc = poly;
-          for (let e = 0; e < 4 && pc.length >= 3; e++) {
-            const A = rc[e], B = rc[(e + 1) % 4];
-            pc = Geo.clip(pc, A[0], A[1], -(B[1] - A[1]), B[0] - A[0]);
-          }
-          if (pc.length < 3 || Math.abs(Geo.area(pc)) < 4) continue;
-          const ids = [];
-          for (const p of pc) { const id = fweld(p); if (ids[ids.length - 1] !== id) ids.push(id); }
-          if (ids.length > 1 && ids[0] === ids[ids.length - 1]) ids.pop();
-          if (ids.length < 3) continue;
-          kids.push(fcells.length);
-          fcells.push({ index: fcells.length, ids, coarse: c, zone, suburb: false, lat: [i, j], mainSquare: i === 0 && j === 0 });
+    const pr = Geo.scale(Geo.inset(poly, 3).length >= 3 ? Geo.inset(poly, 3) : poly, c.inner || c.citadel ? 0.78 : 0.9);
+    precinctOf.set(c.index, pr);
+    if (c.inner || c.citadel) reserves.push({ poly: pr, kind: 'monument', frontage: false, cell: c });
+  }
+
+  // ================= 13a. Grandes rues : le chemin le moins pénible sur le terrain =================
+  const GS = 5, GN = Math.ceil((2 * E) / GS);
+  const gIdx = (i, j) => j * GN + i;
+  const gPos = (i, j) => [-E + (i + 0.5) * GS, -E + (j + 0.5) * GS];
+  const gCell = p => [Math.max(0, Math.min(GN - 1, Math.floor((p[0] + E) / GS))), Math.max(0, Math.min(GN - 1, Math.floor((p[1] + E) / GS)))];
+  const gAlt = new Float32Array(GN * GN), gDom = new Uint8Array(GN * GN), gWater = new Uint8Array(GN * GN), gWall = new Uint8Array(GN * GN);
+  const gCliff = new Uint8Array(GN * GN), gRes = new Uint8Array(GN * GN), gRoad = new Uint8Array(GN * GN), gGrid = new Uint8Array(GN * GN);
+  const DOM = { out: 0, town: 1, cit: 2 };
+  const wallSegs = wallPoly.map((p, i) => [p, wallPoly[(i + 1) % wallPoly.length]]);
+  const citSegs = citadelPoly ? citadelPoly.map((p, i) => [p, citadelPoly[(i + 1) % citadelPoly.length]]) : [];
+  const gatePts = gates.map(g => verts[g]);
+  const citGatePt = citadelGate >= 0 ? verts[citadelGate] : null;
+  // Murs et rivières "peints" sur la grille (rapide), sauf les ouvertures des portes
+  const paint = (segList, radius, arr) => {
+    for (const [a, b] of segList) {
+      const L = dist(a, b), n = Math.max(1, Math.ceil(L / 2));
+      for (let s2 = 0; s2 <= n; s2++) {
+        const p = [a[0] + (b[0] - a[0]) * s2 / n, a[1] + (b[1] - a[1]) * s2 / n];
+        const r = Math.ceil(radius / GS), [ci, cj] = gCell(p);
+        for (let dj = -r; dj <= r; dj++) for (let di = -r; di <= r; di++) {
+          const i2 = ci + di, j2 = cj + dj;
+          if (i2 < 0 || j2 < 0 || i2 >= GN || j2 >= GN) continue;
+          if (dist(gPos(i2, j2), p) <= radius) arr[gIdx(i2, j2)] = 1;
         }
       }
-      childrenOf.set(c.index, kids);
-      continue;
     }
-    const k = Math.max(1, Math.round(Math.abs(Geo.area(poly)) / FINE_AREA[zone]));
-    const r = rng('fin|' + opts.size + '|' + c.index);
-    const xs = poly.map(p => p[0]), ys = poly.map(p => p[1]);
-    let pts = [];
-    for (let tries = 0; pts.length < k && tries < k * 60; tries++) {
-      const p = [between(r, [Math.min(...xs), Math.max(...xs)]), between(r, [Math.min(...ys), Math.max(...ys)])];
-      if (inside(poly, p)) pts.push(p);
-    }
-    if (!pts.length) pts = [Geo.centroid(poly)];
-    for (let it = 0; it < 2 && pts.length > 1; it++) pts = voronoiIn(pts, poly).map((pc, i) => (pc.length >= 3 ? Geo.centroid(pc) : pts[i]));
-    const kids = [];
-    for (const pc of pts.length > 1 ? voronoiIn(pts, poly) : [poly]) {
-      if (pc.length < 3) continue;
-      const ids = [];
-      for (const p of pc) { const id = fweld(p); if (ids[ids.length - 1] !== id) ids.push(id); }
-      if (ids.length > 1 && ids[0] === ids[ids.length - 1]) ids.pop();
-      if (ids.length < 3) continue;
-      kids.push(fcells.length);
-      fcells.push({ index: fcells.length, ids, coarse: c, zone, suburb: !c.inner && !c.citadel });
-    }
-    childrenOf.set(c.index, kids);
-  }
-
-  // --- raccords le long des bords de quartier (sommets en T) ---
-  const fek = (a, b) => (a < b ? a + '_' + b : b + '_' + a);
-  const coarseLists = new Map();
-  const coarseList = key => {
-    if (coarseLists.has(key)) return coarseLists.get(key);
-    const [u, v] = unkey(key), U = verts[u], V = verts[v], L = dist(U, V);
-    const cand = new Set();
-    for (const ci of edgeCells.get(key) || []) for (const fi of childrenOf.get(ci) || []) fcells[fi].ids.forEach(id => cand.add(id));
-    const list = [...cand].filter(id => Geo.distToSegment(fverts[id], U, V) < 0.4)
-      .map(id => [id, ((fverts[id][0] - U[0]) * (V[0] - U[0]) + (fverts[id][1] - U[1]) * (V[1] - U[1])) / L])
-      .sort((a, b) => a[1] - b[1]).map(x => x[0]);
-    coarseLists.set(key, list);
-    return list;
   };
-  const fineOnCoarse = new Map();   // bord fin → bord de quartier sur lequel il se trouve
-  for (const fc of fcells) {
-    const lists = cellEdges(fc.coarse).map(([a, b]) => [ek(a, b), coarseList(ek(a, b))]);
-    const out = [];
-    const ids = fc.ids;
-    for (let k = 0; k < ids.length; k++) {
-      const p = ids[k], q = ids[(k + 1) % ids.length];
-      out.push(p);
-      for (const [ck, L] of lists) {
-        const ip = L.indexOf(p), iq = L.indexOf(q);
-        if (ip < 0 || iq < 0) continue;
-        const seq = ip < iq ? L.slice(ip, iq + 1) : L.slice(iq, ip + 1).reverse();
-        for (let m = 1; m + 1 < seq.length; m++) out.push(seq[m]);
-        for (let m = 0; m + 1 < seq.length; m++) fineOnCoarse.set(fek(seq[m], seq[m + 1]), ck);
-        break;
+  paint([...wallSegs, ...citSegs], 4, gWall);
+  for (const g of [...gatePts, ...(citGatePt ? [citGatePt] : [])]) {
+    const [ci, cj] = gCell(g);
+    for (let dj = -2; dj <= 2; dj++) for (let di = -2; di <= 2; di++) { const i2 = ci + di, j2 = cj + dj; if (i2 >= 0 && j2 >= 0 && i2 < GN && j2 < GN && dist(gPos(i2, j2), g) < 9) gWall[gIdx(i2, j2)] = 0; }
+  }
+  rivers.forEach(rv => { const P = smooth(rv.path.map(id => verts[id]), 3); paint(P.slice(1).map((q, i) => [P[i], q]), rv.w / 2 + 1, gWater); });
+  for (let j = 0; j < GN; j++) for (let i = 0; i < GN; i++) {
+    const p = gPos(i, j), k = gIdx(i, j);
+    gAlt[k] = altitude(...p);
+    gDom[k] = DOM[domainAt(p)];
+    if (reserves.some(r => r.kind === 'monument' && inPoly(r.poly, p))) gRes[k] = 1;
+    if (bastide) {
+      const x = ((p[0] - lat.o[0]) * lat.u[0] + (p[1] - lat.o[1]) * lat.u[1]) / lat.a, y = ((p[0] - lat.o[0]) * lat.v[0] + (p[1] - lat.o[1]) * lat.v[1]) / lat.b;
+      const dx = Math.abs(x - Math.round(x)) * lat.a, dy = Math.abs(y - Math.round(y)) * lat.b;
+      gGrid[k] = Math.min(dx, dy) < 3.5 ? 1 : 0;
+    }
+  }
+  // Pente sur la grille (différences finies de l'altitude déjà calculée) : bien plus rapide que le relief analytique
+  const gSlope = new Float32Array(GN * GN);
+  for (let j = 0; j < GN; j++) for (let i = 0; i < GN; i++) {
+    const a = gAlt[gIdx(Math.min(GN - 1, i + 1), j)] - gAlt[gIdx(Math.max(0, i - 1), j)];
+    const b = gAlt[gIdx(i, Math.min(GN - 1, j + 1))] - gAlt[gIdx(i, Math.max(0, j - 1))];
+    const sp = (Math.hypot(a, b) / (2 * GS)) * 100;
+    gSlope[gIdx(i, j)] = sp;
+    gCliff[gIdx(i, j)] = sp > 60 ? 1 : 0;
+  }
+  const slopeAt = p => { const [i, j] = gCell(p); return gSlope[gIdx(i, j)]; };
+  // A* sur la grille : la pente est comptée le long du trajet (d'où les lacets sur les fortes pentes)
+  const astar = (start, isGoal, allowed, heurTarget) => {
+    const [si, sj] = gCell(start);
+    const N2 = GN * GN, g = new Float32Array(N2).fill(Infinity), prev = new Int32Array(N2).fill(-1), closed = new Uint8Array(N2);
+    const heap = [];
+    const push = (k, f) => { heap.push([f, k]); let i = heap.length - 1; while (i > 0) { const p = (i - 1) >> 1; if (heap[p][0] <= heap[i][0]) break; [heap[p], heap[i]] = [heap[i], heap[p]]; i = p; } };
+    const pop = () => { const top = heap[0], last = heap.pop(); if (heap.length) { heap[0] = last; let i = 0; for (;;) { const l = 2 * i + 1, r = l + 1; let m = i; if (l < heap.length && heap[l][0] < heap[m][0]) m = l; if (r < heap.length && heap[r][0] < heap[m][0]) m = r; if (m === i) break; [heap[m], heap[i]] = [heap[i], heap[m]]; i = m; } } return top; };
+    const h = k => (heurTarget ? dist(gPos(k % GN, Math.floor(k / GN)), heurTarget) * 0.9 : 0);
+    const s0 = gIdx(si, sj);
+    g[s0] = 0; push(s0, h(s0));
+    const NB = [[1, 0], [-1, 0], [0, 1], [0, -1], [1, 1], [1, -1], [-1, 1], [-1, -1]];
+    while (heap.length) {
+      const [, k] = pop();
+      if (closed[k]) continue;
+      closed[k] = 1;
+      const i = k % GN, j = Math.floor(k / GN);
+      if (isGoal(k, i, j)) {
+        const path = [];
+        for (let c = k; c >= 0; c = prev[c]) path.push(gPos(c % GN, Math.floor(c / GN)));
+        return path.reverse();
+      }
+      for (const [di, dj] of NB) {
+        const ni = i + di, nj = j + dj;
+        if (ni < 0 || nj < 0 || ni >= GN || nj >= GN) continue;
+        const nk = gIdx(ni, nj);
+        if (closed[nk] || !allowed(nk)) continue;
+        const len = Math.hypot(di, dj) * GS, grade = Math.abs(gAlt[nk] - gAlt[k]) / len;
+        let c = len * (1 + (grade / 0.07) ** 2);
+        if (gWater[nk]) c += 35;                 // un pont coûte cher
+        if (gCliff[nk]) c += 250;                // une falaise : presque jamais
+        if (gRoad[nk]) c *= 0.4;                 // on rejoint volontiers une route existante
+        if (bastide && gDom[nk] === DOM.town) c *= gGrid[nk] ? 0.35 : 3;   // bastide : on suit le damier
+        const ng = g[k] + c;
+        if (ng < g[nk]) { g[nk] = ng; prev[nk] = k; push(nk, ng + h(nk)); }
       }
     }
-    fc.ids = out;
-  }
-  const fEdges = fc => fc.ids.map((a, k) => [a, fc.ids[(k + 1) % fc.ids.length]]);
-  const fEdgeCells = new Map();
-  fcells.forEach(fc => fEdges(fc).forEach(([a, b]) => {
-    const key = fek(a, b);
-    if (!fEdgeCells.has(key)) fEdgeCells.set(key, []);
-    fEdgeCells.get(key).push(fc.index);
-  }));
-
-  // --- nature de chaque bord : grande route, rue, ruelle, place, rempart, berge… ---
-  const oldWallStanding = new Map(oldWalls.map(w => [ek(w.a, w.b), w.standing]));
-  const coarseClass = (ck, from) => {
-    if (wallEdges.has(ck)) return 'wall';
-    if (riverEdgeW.has(ck)) return from.inner && quays.has(ck) ? 'quai' : 'river';
-    if (citadelEdges.has(ck)) return 'wall2';
-    if (roadEdges.has(ck)) {
-      // Bastide : en ville, les grandes rues sont les axes du damier ; on garde seulement l'entrée depuis la porte
-      if (bastide && from.inner && !from.citadel) return unkey(ck).some(v => gates.includes(v)) ? 'main' : 'none';
-      return 'main';
-    }
-    if (oldWallStanding.has(ck)) return oldWallStanding.get(ck) ? 'oldwall' : 'boulevard'; // mur démoli → boulevard
-    const other = (edgeCells.get(ck) || []).map(ci => cells[ci]).find(o => o !== from);
-    if (!other) return 'edge';
-    if (other.type === 'plaza' || other.building) return 'place';
-    if (isFine(other)) return domainOf(other) === domainOf(from) ? 'none' : 'edge';
-    if (other.steep) return 'back';
-    return 'edge';
+    return null;
   };
-  // Quais : une partie des berges en ville est longée par une rue, les maisons regardent l'eau
-  const quays = new Set();
+  const markRoad = pts => { for (const p of pts) { const [i, j] = gCell(p); gRoad[gIdx(i, j)] = 1; } };
+  const finishLine = pts => smooth(simplify(pts, 2.2), 2);
+  const towardCenter = (p, d) => { const v = norm([plaza.site[0] - p[0], plaza.site[1] - p[1]]); return [p[0] + v[0] * d, p[1] + v[1] * d]; };
+
+  const streets = [];   // { points, cls, kind, gate, coarse, deadEnd }
+  const HALF = { main: 5, road: 4.5, boulevard: 4.5, quai: 3, rue: 3, ruelle: 1.8 };
+  const marketGoal = k => inPoly(marketPoly, gPos(k % GN, Math.floor(k / GN)));
+  // Routes des portes vers le marché
+  gates.forEach((g, gi) => {
+    const gp = verts[g], start = towardCenter(gp, 7);
+    const path = astar(start, marketGoal, k => (gDom[k] === DOM.town || marketGoal(k)) && !gWall[k] && !gRes[k], plaza.site);
+    if (!path) return;
+    const pts = finishLine([gp, ...path]);
+    markRoad(path);
+    streets.push({ points: pts, cls: 'main', kind: 'inner', gate: gi });
+  });
+  // Montée vers la citadelle / la ville haute, puis jusqu'à son centre
+  if (citGatePt) {
+    const path = astar(marketPoly.reduce((a, p) => [a[0] + p[0] / 4, a[1] + p[1] / 4], [0, 0]), k => dist(gPos(k % GN, Math.floor(k / GN)), citGatePt) < 7,
+      k => !gWall[k] && !gRes[k] && (gDom[k] !== DOM.out || twin), citGatePt);
+    if (path) {
+      const pts = finishLine([...path, citGatePt]);
+      markRoad(path);
+      streets.push({ points: pts, cls: 'main', kind: 'citadel' });
+      const cc = citadelPoly.reduce((a, p) => [a[0] + p[0] / citadelPoly.length, a[1] + p[1] / citadelPoly.length], [0, 0]);
+      const inner = astar(citGatePt, k => dist(gPos(k % GN, Math.floor(k / GN)), cc) < 10, k => gDom[k] === DOM.cit && !gRes[k], cc);
+      if (inner && inner.length > 3) streets.push({ points: finishLine([citGatePt, ...inner]), cls: 'main', kind: 'citadel-inner' });
+    }
+  }
+  // Routes vers les villes voisines
+  gates.forEach((g, gi) => {
+    const gp = verts[g], l = Math.hypot(gp[0], gp[1]) || 1, start = [gp[0] + (gp[0] / l) * 7, gp[1] + (gp[1] / l) * 7];
+    const target = [(gp[0] / l) * E * 1.5, (gp[1] / l) * E * 1.5];
+    const path = astar(start, (k, i, j) => i === 0 || j === 0 || i === GN - 1 || j === GN - 1, k => gDom[k] === DOM.out && !gWall[k], target);
+    if (!path) return;
+    markRoad(path);
+    streets.push({ points: finishLine([gp, ...path]), cls: 'road', kind: 'outer', gate: gi });
+  });
+
+  // ================= 13b. Réseau : boulevards, quais, damier, puis croissance =================
+  // Index spatial des segments (rues et obstacles)
+  const SH = 24, hash = new Map();
+  const segs = [];   // { a, b, half, kind: 'street'|'wall'|'river'|'cliff'|'old'|'reserve', street }
+  const addSeg = sg => {
+    segs.push(sg);
+    const x0 = Math.floor(Math.min(sg.a[0], sg.b[0]) / SH), x1 = Math.floor(Math.max(sg.a[0], sg.b[0]) / SH);
+    const y0 = Math.floor(Math.min(sg.a[1], sg.b[1]) / SH), y1 = Math.floor(Math.max(sg.a[1], sg.b[1]) / SH);
+    for (let x = x0; x <= x1; x++) for (let y = y0; y <= y1; y++) { const k = x + ',' + y; if (!hash.has(k)) hash.set(k, []); hash.get(k).push(sg); }
+  };
+  const near = (p, r) => {
+    const out = new Set();
+    for (let x = Math.floor((p[0] - r) / SH); x <= Math.floor((p[0] + r) / SH); x++) for (let y = Math.floor((p[1] - r) / SH); y <= Math.floor((p[1] + r) / SH); y++) {
+      for (const sg of hash.get(x + ',' + y) || []) out.add(sg);
+    }
+    return out;
+  };
+  const addStreet = st => {
+    if (st.points.length < 2) return;
+    streets.includes(st) || streets.push(st);
+    for (let i = 0; i + 1 < st.points.length; i++) addSeg({ a: st.points[i], b: st.points[i + 1], half: HALF[st.cls], kind: 'street', street: st });
+  };
+  streets.slice().forEach(addStreet);
+  wallSegs.forEach(([a, b]) => addSeg({ a, b, half: 7, kind: 'wall' }));
+  citSegs.forEach(([a, b]) => addSeg({ a, b, half: 5, kind: 'wall' }));
+  rivers.forEach(rv => { const P = smooth(rv.path.map(id => verts[id]), 3); for (let i = 0; i + 1 < P.length; i++) addSeg({ a: P[i], b: P[i + 1], half: rv.w / 2 + 2, kind: 'river' }); });
+  cliffs.forEach(cl => { for (let i = 0; i + 1 < cl.points.length; i++) addSeg({ a: cl.points[i], b: cl.points[i + 1], half: 2, kind: 'cliff' }); });
+  oldWalls.filter(w => w.standing).forEach(w => addSeg({ a: verts[w.a], b: verts[w.b], half: 2.5, kind: 'old' }));
+  reserves.forEach(r => r.poly.forEach((p, i) => addSeg({ a: p, b: r.poly[(i + 1) % r.poly.length], half: 0.5, kind: 'reserve', reserve: r })));
+
+  const rS2 = rng('reseau|' + opts.size);
+  const okGround = (p, dom) => domainAt(p) === dom && !inReserve(p) && slopeAt(p) <= SLOPE_MAX && !(rivers.length && riverDist(p) < 2);
+  // Tracé d'une ligne "possible" en tronçons continus (pour quais, boulevards, damier)
+  const runsAlong = (pts, dom, minLen) => {
+    const runs = [];
+    let cur = [];
+    for (const p of pts) { if (okGround(p, dom)) cur.push(p); else { if (cur.length > 1) runs.push(cur); cur = []; } }
+    if (cur.length > 1) runs.push(cur);
+    return runs.filter(r => polyLen(r) >= minLen).map(r => simplify(r, 0.6));
+  };
+  const resample = (pts, step) => {
+    const out = [pts[0]];
+    for (let i = 0; i + 1 < pts.length; i++) {
+      const L = dist(pts[i], pts[i + 1]), n = Math.max(1, Math.round(L / step));
+      for (let k = 1; k <= n; k++) out.push([pts[i][0] + (pts[i + 1][0] - pts[i][0]) * k / n, pts[i][1] + (pts[i + 1][1] - pts[i][1]) * k / n]);
+    }
+    return out;
+  };
+  // Boulevards : le tracé des vieux murs démolis
   {
-    const rQ = rng('quais');
-    for (const key of riverEdgeW.keys()) {
-      if ((edgeCells.get(key) || []).every(ci => cells[ci].inner) && rQ() < 0.55) quays.add(key);
-    }
+    const ruined = oldWalls.filter(w => !w.standing).map(w => [verts[w.a], verts[w.b]]);
+    for (const [a, b] of ruined) for (const run of runsAlong(resample([a, b], 4), 'town', 20)) addStreet({ points: run, cls: 'boulevard', kind: 'boulevard' });
   }
-  const fclass = new Map();
-  for (const [key, cs] of fEdgeCells) {
-    const ck = fineOnCoarse.get(key);
-    fclass.set(key, ck ? coarseClass(ck, fcells[cs[0]].coarse) : 'none');
-    // Bastide : chaque limite entre deux rectangles du damier est une rue ; les axes de la place sont des grandes rues
-    if (bastide && cs.length === 2 && fcells[cs[0]].lat && fcells[cs[1]].lat && fclass.get(key) === 'none') {
-      const [p, q] = cs.map(i => fcells[i].lat);
-      if (p[0] !== q[0] || p[1] !== q[1]) {
-        const axis = p[0] !== q[0] ? Math.max(p[0], q[0]) : Math.max(p[1], q[1]);
-        fclass.set(key, axis === 0 || axis === 1 ? 'main' : 'rue');
-      }
-      if (fcells[cs[0]].mainSquare !== fcells[cs[1]].mainSquare && fclass.get(key) !== 'none') fclass.set(key, 'place');
+  // Quais : des rues le long de la rivière, sur une partie des berges en ville
+  const rQ = rng('quais');
+  rivers.forEach(rv => {
+    const P = resample(smooth(rv.path.map(id => verts[id]), 3), 4);
+    for (const side of [-1, 1]) {
+      const off = rv.w / 2 + 2 + HALF.quai;
+      const line = P.map((p, i) => {
+        const q = P[Math.min(P.length - 1, i + 1)], o = P[Math.max(0, i - 1)], t = norm([q[0] - o[0], q[1] - o[1]]);
+        return [p[0] - t[1] * off * side, p[1] + t[0] * off * side];
+      });
+      for (const run of runsAlong(line, 'town', 40)) if (rQ() < 0.55) addStreet({ points: run, cls: 'quai', kind: 'quai' });
     }
-  }
+  });
 
-  // --- rues secondaires, ruelles et impasses ---
-  const fArea = fcells.map(fc => Math.abs(Geo.area(fc.ids.map(id => fverts[id]))));
-  const MAX_BLOCK = { vieille: 3000, bourg: 5000, neuf: 9000, citadelle: 8000 };
-  const blocksNow = () => {
-    const parent = fcells.map((_, i) => i);
-    const find = i => (parent[i] === i ? i : (parent[i] = find(parent[i])));
-    for (const [key, cs] of fEdgeCells) if (cs.length === 2 && fclass.get(key) === 'none') parent[find(cs[0])] = find(cs[1]);
-    const groups = new Map();
-    fcells.forEach((fc, i) => { const r = find(i); if (!groups.has(r)) groups.set(r, []); groups.get(r).push(i); });
-    return [...groups.values()];
-  };
-  const localPath = (adj, s, t) => {
-    const d = new Map([[s, 0]]), prev = new Map(), done = new Set();
-    for (;;) {
-      let u = -1, bu = Infinity;
-      for (const [v, dv] of d) if (!done.has(v) && dv < bu) { bu = dv; u = v; }
-      if (u < 0 || u === t) break;
-      done.add(u);
-      for (const e of adj.get(u) || []) if (bu + e.cost < (d.has(e.to) ? d.get(e.to) : Infinity)) { d.set(e.to, bu + e.cost); prev.set(e.to, u); }
-    }
-    if (!d.has(t)) return null;
-    const path = [t];
-    while (path[path.length - 1] !== s) path.push(prev.get(path[path.length - 1]));
-    return path;
-  };
-  const rStreets = rng('rues|' + opts.size);
-  const streetPaths = [];
-  const cutBlock = (group, cls, deadEnd) => {
-    const set = new Set(group);
-    const internal = [], border = new Set();
-    for (const fi of group) for (const [a, b] of fEdges(fcells[fi])) {
-      const key = fek(a, b), cs = fEdgeCells.get(key);
-      if (fclass.get(key) === 'none' && cs.length === 2 && set.has(cs[0]) && set.has(cs[1])) internal.push([a, b]);
-      else { border.add(a); border.add(b); }
-    }
-    if (!internal.length) return false;
-    // Axe principal de l'îlot ; la nouvelle rue le coupe en travers
-    let W = 0, cx = 0, cy = 0;
-    const cents = group.map(fi => [Geo.centroid(fcells[fi].ids.map(id => fverts[id])), fArea[fi]]);
-    cents.forEach(([p, w]) => { W += w; cx += p[0] * w; cy += p[1] * w; });
-    cx /= W; cy /= W;
-    let sxx = 0, syy = 0, sxy = 0;
-    cents.forEach(([p, w]) => { sxx += w * (p[0] - cx) ** 2; syy += w * (p[1] - cy) ** 2; sxy += w * (p[0] - cx) * (p[1] - cy); });
-    let th = 0.5 * Math.atan2(2 * sxy, sxx - syy) + (rStreets() - 0.5) * 0.5;
-    // En pente, la rue suit la courbe de niveau (comme dans les villes de colline) : elle coupe l'îlot dans le sens de la pente
-    if (slopePct(cx, cy) > 8) { const g = gradient(cx, cy); th = Math.atan2(g[1], g[0]) + (rStreets() - 0.5) * 0.2; }
-    const ax = [Math.cos(th), Math.sin(th)], cut = [-ax[1], ax[0]];
-    const offLine = m => Math.abs((m[0] - cx) * ax[0] + (m[1] - cy) * ax[1]);
-    const adj = new Map();
-    const add = (a, b, c) => { if (!adj.has(a)) adj.set(a, []); adj.get(a).push({ to: b, cost: c }); };
-    for (const [a, b] of internal) {
-      const m = [(fverts[a][0] + fverts[b][0]) / 2, (fverts[a][1] + fverts[b][1]) / 2];
-      const c = dist(fverts[a], fverts[b]) * (1 + (deadEnd ? 0 : offLine(m) / 6));
-      add(a, b, c); add(b, a, c);
-    }
-    const entry = [...border].filter(id => adj.has(id));
-    if (!entry.length) return false;
-    let s, t;
-    if (deadEnd) {
-      const inner = [...adj.keys()].filter(id => !border.has(id));
-      if (!inner.length) return false;
-      t = inner.reduce((m, id) => (dist(fverts[id], [cx, cy]) < dist(fverts[m], [cx, cy]) ? id : m));
-      s = entry.reduce((m, id) => (dist(fverts[id], fverts[t]) < dist(fverts[m], fverts[t]) ? id : m));
-    } else {
-      if (entry.length < 2) return false;
-      const P1 = [cx + cut[0] * 1e4, cy + cut[1] * 1e4], P2 = [cx - cut[0] * 1e4, cy - cut[1] * 1e4];
-      s = entry.reduce((m, id) => (dist(fverts[id], P1) < dist(fverts[m], P1) ? id : m));
-      t = entry.filter(id => id !== s).reduce((m, id) => (dist(fverts[id], P2) < dist(fverts[m], P2) ? id : m));
-    }
-    const path = localPath(adj, s, t);
-    if (!path || path.length < 2) return false;
-    for (let k = 0; k + 1 < path.length; k++) fclass.set(fek(path[k], path[k + 1]), cls);
-    streetPaths.push({ cls, deadEnd: !!deadEnd, path, coarse: fcells[group[0]].coarse });
-    return true;
-  };
-  {
-    const stuck = new Set();
-    for (let guard = 0; guard < 500; guard++) {
-      let target = null, bestArea = 0;
-      for (const g of blocksNow()) {
-        const zone = fcells[g[0]].zone;
-        if (!MAX_BLOCK[zone] || stuck.has(Math.min(...g)) || fcells[g[0]].lat) continue;
-        const a = g.reduce((s, i) => s + fArea[i], 0);
-        if (a > MAX_BLOCK[zone] && a > bestArea) { bestArea = a; target = g; }
-      }
-      if (!target) break;
-      if (!cutBlock(target, 'rue')) stuck.add(Math.min(...target));
-    }
-    // Ruelles et impasses dans les îlots encore grands
-    for (const g of blocksNow()) {
-      const zone = fcells[g[0]].zone;
-      if (!MAX_BLOCK[zone] || fcells[g[0]].lat) continue;
-      const a = g.reduce((s, i) => s + fArea[i], 0);
-      if (a > MAX_BLOCK[zone] * 0.5 && rStreets() < 0.45) cutBlock(g, 'ruelle', false);
-      else if (a > MAX_BLOCK[zone] * 0.35 && rStreets() < 0.35) cutBlock(g, 'ruelle', true);
-    }
-  }
-
-  // Placettes : un petit îlot au croisement de rues reste ouvert (comme le Weinmarkt de Nuremberg).
-  // Les maisons voisines donnent sur la place.
-  const squares = [];
-  {
-    const rSq = rng('placettes|' + opts.size);
-    const streetCls = new Set(['main', 'rue', 'boulevard']);
-    const want = bastide ? 0 : Math.max(1, Math.round(N / 9));
-    const cands = fcells.filter(fc => fc.coarse.inner && !fc.coarse.citadel && fArea[fc.index] > 250 && fArea[fc.index] < 1300
-      && fEdges(fc).filter(([a, b]) => streetCls.has(fclass.get(fek(a, b)))).length >= 2
-      && fEdges(fc).some(([a, b]) => fclass.get(fek(a, b)) === 'main'));
-    for (let k = 0; k < want && cands.length; k++) {
-      const i = Math.floor(rSq() * cands.length);
-      const fc = cands.splice(i, 1)[0];
-      if (squares.some(o => dist(o.site, fc.coarse.site) < cellR * 1.5)) { k--; continue; }
-      fc.square = true;
-      squares.push({ fc, site: fc.coarse.site });
-      for (const [a, b] of fEdges(fc)) if (fclass.get(fek(a, b)) === 'none') fclass.set(fek(a, b), 'place');
-    }
-  }
-
-  // Bastide : chaque ligne du damier devient une rue (pour les noms)
-  const bastideAxes = [];
+  const junctions = [];   // croisements créés par la croissance (pour les placettes)
+  const breaches = [];
+  const SPACING = { vieille: [30, 46], bourg: [38, 58], neuf: [48, 72], citadelle: [36, 54], faubourg: [60, 90] };
   if (bastide) {
-    const lines = new Map();
-    for (const [key, cs] of fEdgeCells) {
-      const cls = fclass.get(key);
-      if (cs.length !== 2 || !fcells[cs[0]].lat || !fcells[cs[1]].lat || !['rue', 'main', 'place'].includes(cls)) continue;
-      const [p, q] = cs.map(i => fcells[i].lat);
-      const id = p[0] !== q[0] ? 'u' + Math.max(p[0], q[0]) : 'v' + Math.max(p[1], q[1]);
-      if (!lines.has(id)) lines.set(id, { segs: [], coarse: fcells[cs[0]].coarse });
-      lines.get(id).segs.push(unkey(key));
+    // Damier : chaque ligne de la grille, coupée là où l'on ne peut pas bâtir
+    const span = Math.ceil(E / Math.min(lat.a, lat.b)) + 2;
+    for (let k = -span; k <= span; k++) {
+      const axis = k === 0 || k === 1;
+      const uLine = resample([latPoint(k, -span * 2), latPoint(k, span * 2)], 4);
+      const vLine = resample([latPoint(-span * 2, k), latPoint(span * 2, k)], 4);
+      for (const run of runsAlong(uLine, 'town', 20)) addStreet({ points: run, cls: axis ? 'main' : 'rue', kind: 'grid', axis: axis ? 'u' + k : null });
+      for (const run of runsAlong(vLine, 'town', 20)) addStreet({ points: run, cls: axis ? 'main' : 'rue', kind: 'grid', axis: axis ? 'v' + k : null });
     }
-    for (const [id, line] of lines) {
-      // Enchaîne les segments en tronçons continus, garde le plus long
-      const adj = new Map();
-      for (const [a, b] of line.segs) { (adj.get(a) || adj.set(a, []).get(a)).push(b); (adj.get(b) || adj.set(b, []).get(b)).push(a); }
-      const seen = new Set();
-      let best = [];
-      for (const start of adj.keys()) {
-        if (seen.has(start) || adj.get(start).length !== 1) continue;
-        const path = [start];
-        seen.add(start);
-        for (let cur = start, prev = -1; ;) {
-          const nxt = adj.get(cur).find(x => x !== prev && !seen.has(x));
-          if (nxt === undefined) break;
-          path.push(nxt); seen.add(nxt); prev = cur; cur = nxt;
+  } else {
+    // Croissance : des rues partent régulièrement des rues existantes, à peu près perpendiculaires ;
+    // en pente elles suivent les courbes de niveau ; elles s'arrêtent sur une autre rue, un mur, l'eau,
+    // une falaise ou une pente trop forte.
+    const queue = [];
+    const seedFrom = (st, gen) => {
+      const pts = st.points, L = polyLen(pts);
+      const zone = zoneOf(cellAt(pts[Math.floor(pts.length / 2)]));
+      const sp = SPACING[zone] || SPACING.bourg;
+      let acc = 0, nextAt = between(rS2, sp) * 0.6;
+      for (let i = 0; i + 1 < pts.length; i++) {
+        const a = pts[i], b = pts[i + 1], l = dist(a, b);
+        while (acc + l >= nextAt) {
+          const t = (nextAt - acc) / l, p = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t], u = norm([b[0] - a[0], b[1] - a[1]]);
+          for (const side of [-1, 1]) if (rS2() < 0.85) queue.push({ p, n: [-u[1] * side, u[0] * side], half: HALF[st.cls], gen, parent: st });
+          nextAt += between(rS2, sp);
         }
-        if (path.length > best.length) best = path;
+        acc += l;
       }
-      if (best.length < 2) continue;
-      const axis = id === 'u0' || id === 'u1' || id === 'v0' || id === 'v1';
-      if (axis) bastideAxes.push({ id, path: best });
-      else streetPaths.push({ cls: 'rue', deadEnd: false, path: best, coarse: line.coarse });
+      return L;
+    };
+    streets.filter(st => ['main', 'boulevard', 'quai'].includes(st.cls) && st.kind !== 'outer').forEach(st => seedFrom(st, 1));
+    let guard = 0;
+    while (queue.length && guard++ < 4000) {
+      const sd = queue.shift();
+      const start = [sd.p[0] + sd.n[0] * (sd.half + 0.5), sd.p[1] + sd.n[1] * (sd.half + 0.5)];
+      const dom = domainAt(start);
+      if (dom === 'out' || !okGround(start, dom)) continue;
+      const zone = zoneOf(cellAt(start));
+      const maxLen = sd.gen === 1 ? 240 : sd.gen === 2 ? 140 : 80;
+      let dir = norm([sd.n[0] + (rS2() - 0.5) * 0.35, sd.n[1] + (rS2() - 0.5) * 0.35]);
+      const pts = [sd.p], step = 6;
+      let cur = start, connected = false, endedAt = null;
+      pts.push(start);
+      for (let len = 0; len < maxLen; len += step) {
+        // En pente, la rue suit la courbe de niveau
+        if (slopeAt(cur) > 8) {
+          const g = gradient(...cur), c = norm([-g[1], g[0]]), s = c[0] * dir[0] + c[1] * dir[1] >= 0 ? 1 : -1;
+          dir = norm([dir[0] * 0.55 + c[0] * s * 0.45, dir[1] * 0.55 + c[1] * s * 0.45]);
+        } else dir = norm([dir[0] + (rS2() - 0.5) * 0.08, dir[1] + (rS2() - 0.5) * 0.08]);
+        const nxt = [cur[0] + dir[0] * step, cur[1] + dir[1] * step];
+        // Croise une rue ou un obstacle ?
+        let hit = null;
+        for (const sg of near(nxt, 16)) {
+          if (sg.street === sd.parent && len < 14) continue;
+          if (sg.street && sg.street.points === pts) continue;
+          const h = segHit(cur, nxt, sg.a, sg.b);
+          if (h && (!hit || h.t < hit.h.t)) hit = { h, sg };
+        }
+        if (hit) {
+          const k = hit.sg.kind;
+          if (k === 'street') { pts.push(hit.h.at); connected = true; junctions.push(hit.h.at); break; }
+          if ((k === 'cliff' && rS2() < 0.35) || (k === 'old' && rS2() < 0.4)) {   // escalier ou brèche
+            if (k === 'old') breaches.push(hit.h.at);
+          } else { endedAt = k; break; }
+        }
+        if (domainAt(nxt) !== dom || !okGround(nxt, dom)) { endedAt = 'edge'; break; }
+        // Trop près d'une autre rue : on s'y raccorde
+        let snap = null, sd2 = Infinity;
+        for (const sg of near(nxt, 12)) {
+          if (sg.kind !== 'street' || (sg.street === sd.parent && len < 20)) continue;
+          const d = Geo.distToSegment(nxt, sg.a, sg.b);
+          if (d < 9 && d < sd2) { sd2 = d; snap = sg; }
+        }
+        if (snap && len > 10) {
+          const ab = [snap.b[0] - snap.a[0], snap.b[1] - snap.a[1]], L2 = ab[0] ** 2 + ab[1] ** 2 || 1;
+          const t = Math.max(0, Math.min(1, ((nxt[0] - snap.a[0]) * ab[0] + (nxt[1] - snap.a[1]) * ab[1]) / L2));
+          const at = [snap.a[0] + ab[0] * t, snap.a[1] + ab[1] * t];
+          pts.push(at); connected = true; junctions.push(at); break;
+        }
+        pts.push(nxt);
+        cur = nxt;
+      }
+      const L = polyLen(pts);
+      if (L < 20 || (!connected && L < 28)) continue;
+      const deadEnd = !connected && endedAt !== 'wall' && endedAt !== 'edge';
+      const cls = sd.gen >= 2 && (L < 70 || zone === 'vieille' && rS2() < 0.4) ? 'ruelle' : 'rue';
+      const st = { points: simplify(pts, 1.2), cls, kind: 'growth', deadEnd, gen: sd.gen, coarse: cellAt(pts[Math.floor(pts.length / 2)]) };
+      addStreet(st);
+      if (sd.gen < (zone === 'vieille' ? 3 : 2) && cls === 'rue') seedFrom(st, sd.gen + 1);
     }
   }
 
-  // ================= 14. Dessin des parcelles et des maisons =================
+  // Placettes : quelques croisements s'élargissent en petite place (comme le Weinmarkt de Nuremberg)
+  const squares = [];
+  if (!bastide) {
+    const rSq = rng('placettes|' + opts.size);
+    const want = Math.max(1, Math.round(N / 9));
+    const cand = junctions.filter(p => domainAt(p) === 'town' && !inReserve(p) && slopeAt(p) < 12);
+    for (let tries = 0; squares.length < want && tries < 60 && cand.length; tries++) {
+      const p = cand[Math.floor(rSq() * cand.length)];
+      if (squares.some(o => dist(o.at, p) < cellR * 1.6) || dist(p, plaza.site) < cellR * 1.5) continue;
+      const r = between(rSq, [9, 13]);
+      const poly = circle(p, r, 10).map(q => [q[0] + (rSq() - 0.5) * 3, q[1] + (rSq() - 0.5) * 3]);
+      const res = { poly, kind: 'square', frontage: true };
+      reserves.push(res);
+      poly.forEach((q, i) => addSeg({ a: q, b: poly[(i + 1) % poly.length], half: 0.5, kind: 'reserve', reserve: res }));
+      squares.push({ at: p, poly, cell: cellAt(p) });
+    }
+  }
+
+  // Églises de paroisse : un enclos le long d'une rue, au cœur de chaque quartier (sauf celui de la cathédrale)
+  const churchSpots = [];
+  {
+    const rC = rng('paroisses');
+    const saints = SAINTS.slice();
+    const streetCandidates = streets.filter(st => ['rue', 'main', 'boulevard'].includes(st.cls) && st.kind !== 'outer');
+    const tryChurch = (mid, dom, filterCell) => {
+      let best = null, bd = Infinity;
+      for (const st of streetCandidates) {
+        const P = resample(st.points, 10);
+        for (let i = 1; i + 1 < P.length; i++) {
+          if (dist(P[i], mid) > cellR * 2.5) continue;
+          const u = norm([P[i + 1][0] - P[i - 1][0], P[i + 1][1] - P[i - 1][1]]);
+          for (const side of [-1, 1]) {
+            const n = [-u[1] * side, u[0] * side], c = [P[i][0] + n[0] * (HALF[st.cls] + 15), P[i][1] + n[1] * (HALF[st.cls] + 15)];
+            const poly = rect(c, u, 32, 26);
+            if (filterCell && !filterCell(cellAt(c))) continue;
+            if (!poly.every(q => domainAt(q) === dom && !inReserve(q) && slopeAt(q) < SLOPE_EASY)) continue;
+            if ([...near(c, 30)].some(sg => sg.kind !== 'reserve' && poly.some((q, k) => segHit(q, poly[(k + 1) % 4], sg.a, sg.b)))) continue;
+            const d = dist(c, mid);
+            if (d < bd) { bd = d; best = poly; }
+          }
+        }
+      }
+      return best;
+    };
+    districts.forEach((d, k) => {
+      if (d.cells.some(c => c.building && c.building.id === 'temple')) return;
+      const poly = tryChurch(d.labelCell.site, 'town', c => c.district === k);
+      if (!poly) return;
+      const res = { poly, kind: 'church', frontage: false };
+      reserves.push(res);
+      poly.forEach((q, i) => addSeg({ a: q, b: poly[(i + 1) % 4], half: 0.5, kind: 'reserve', reserve: res }));
+      churchSpots.push({ poly, district: k, name: saints.splice(Math.floor(rC() * saints.length), 1)[0] || 'Saint-Pierre' });
+    });
+    if (twin && citadelPoly) {
+      const cc = citadelPoly.reduce((a, p) => [a[0] + p[0] / citadelPoly.length, a[1] + p[1] / citadelPoly.length], [0, 0]);
+      const poly = tryChurch(cc, 'cit');
+      if (poly) {
+        const res = { poly, kind: 'church', frontage: false };
+        reserves.push(res);
+        poly.forEach((q, i) => addSeg({ a: q, b: poly[(i + 1) % 4], half: 0.5, kind: 'reserve', reserve: res }));
+        churchSpots.push({ poly, district: -1, name: 'Collégiale ' + (saints.splice(Math.floor(rC() * saints.length), 1)[0] || 'Saint-Pierre') });
+      }
+    }
+  }
+
+  // ================= 14. Parcelles et maisons, le long des rues =================
   const city = {
     name, autoName, seed: opts.seed, size: opts.size, R, E, relief, age, moat,
     rivers: rivers.map(rv => ({ w: rv.w, points: smooth(rv.path.map(id => verts[id]), 3) })),
-    bridges,
-    wall: wall.map(id => verts[id]),
+    bridges: [],
+    wall: wallPoly,
     gates: gates.map(id => {
       const k = wall.indexOf(id);
       return { at: verts[id], prev: verts[wall[(k - 1 + wall.length) % wall.length]], next: verts[wall[(k + 1) % wall.length]] };
     }),
-    oldWalls: oldWalls.map(w => ({ a: verts[w.a], b: verts[w.b], standing: w.standing })),
-    oldGates,
+    oldWalls: [], oldGates: [],
     citadel: citadelSet.size ? {
       edges: boundary(citadelSet).map(([a, b]) => [verts[a], verts[b]]),
-      gate: citadelGate >= 0 ? verts[citadelGate] : null,
+      gate: citGatePt,
     } : null,
-    roads: roads.filter((p, i) => !(bastide && roadMeta[i].kind === 'inner')).map(p => p.map(id => verts[id])),
+    streetNet: [], streetHalf: HALF, roads: [],
     suburbGround: [],
     ground: { court: [], yard: [], garden: [] },
     houses: { stone: [], timber: [], thatch: [] },
@@ -1223,33 +1316,14 @@ function generateCity(opts) {
     city.houses[mat].push(poly);
     city.roofs[roof].push(poly);
   };
-  const treeIn = (poly, rand, p) => {
-    if (rand() >= p || Math.abs(Geo.area(poly)) < 50) return;
-    const [c, ir] = inradius(poly);
-    if (ir < 3) return;
-    const a = rand() * Math.PI * 2, d = rand() * Math.max(0, ir - 4);
-    city.trees.push([c[0] + Math.cos(a) * d, c[1] + Math.sin(a) * d, Math.min(ir * 0.9, between(rand, [2.5, 4.5]))]);
-  };
-
-  const INSET = { main: 5, quai: 0, boulevard: 4.5, rue: 2.6, ruelle: 1.5, place: 2.5, wall: 7, wall2: 5, oldwall: 3, edge: 2.5, back: 1.5, none: 0 };
-  const FRONTS = new Set(['main', 'quai', 'boulevard', 'rue', 'ruelle', 'place']);
-  const TREES = { vieille: 0.05, bourg: 0.25, neuf: 0.45, faubourg: 0.5, citadelle: 0.15 };
-  const interiorGround = zone => (zone === 'vieille' || zone === 'citadelle' ? 'court' : 'garden');
-
-  // Intersection de deux polygones convexes, et test de chevauchement (axes séparateurs)
-  const intersectConvex = (poly, clipPoly) => {
-    const sg = Geo.area(clipPoly) > 0 ? 1 : -1;
-    let out = poly;
-    for (let i = 0; i < clipPoly.length && out.length >= 3; i++) {
-      const A = clipPoly[i], B = clipPoly[(i + 1) % clipPoly.length];
-      out = Geo.clip(out, A[0], A[1], -(B[1] - A[1]) * sg, (B[0] - A[0]) * sg);
-    }
-    return out.filter((p, i) => dist(p, out[(i + 1) % out.length]) > 0.05);   // sans sommets en double
-  };
   const overlaps = (a, b) => {
+    let ax0 = Infinity, ax1 = -Infinity, ay0 = Infinity, ay1 = -Infinity, bx0 = Infinity, bx1 = -Infinity, by0 = Infinity, by1 = -Infinity;
+    for (const q of a) { ax0 = Math.min(ax0, q[0]); ax1 = Math.max(ax1, q[0]); ay0 = Math.min(ay0, q[1]); ay1 = Math.max(ay1, q[1]); }
+    for (const q of b) { bx0 = Math.min(bx0, q[0]); bx1 = Math.max(bx1, q[0]); by0 = Math.min(by0, q[1]); by1 = Math.max(by1, q[1]); }
+    if (ax1 < bx0 || bx1 < ax0 || ay1 < by0 || by1 < ay0) return false;
     for (const P of [a, b]) for (let i = 0; i < P.length; i++) {
       const A = P[i], B = P[(i + 1) % P.length], nx = -(B[1] - A[1]), ny = B[0] - A[0];
-      if (Math.hypot(nx, ny) < 1e-6) continue;   // côté de longueur nulle : pas un axe
+      if (Math.hypot(nx, ny) < 1e-6) continue;
       let amin = Infinity, amax = -Infinity, bmin = Infinity, bmax = -Infinity;
       for (const q of a) { const v = q[0] * nx + q[1] * ny; amin = Math.min(amin, v); amax = Math.max(amax, v); }
       for (const q of b) { const v = q[0] * nx + q[1] * ny; bmin = Math.min(bmin, v); bmax = Math.max(bmax, v); }
@@ -1258,236 +1332,225 @@ function generateCity(opts) {
     }
     return true;
   };
-
-  // Façades sur rue : maisons rectangulaires alignées sur la rue, cour ou jardin derrière
-  const frontage = (block0, classes0, zone, rand, suburb, slopeHere = 0) => {
-    const onSlope = slopeHere > SLOPE_EASY;   // entre 15 et 25 % : maisons plus rares et moins profondes, en terrasses
-    const Z = ZONES[zone];
-    // Fusionne les segments alignés d'une même rue : une rangée de maisons continue
-    let block = block0.slice(), classes = classes0.slice();
-    for (let changed = true; changed && block.length > 3;) {
-      changed = false;
-      for (let k = 0; k < block.length && block.length > 3; k++) {
-        const pk = (k - 1 + block.length) % block.length, nk = (k + 1) % block.length;
-        if (classes[pk] !== classes[k]) continue;
-        const a1 = Math.atan2(block[k][1] - block[pk][1], block[k][0] - block[pk][0]);
-        const a2 = Math.atan2(block[nk][1] - block[k][1], block[nk][0] - block[k][0]);
-        let da = Math.abs(a1 - a2); if (da > Math.PI) da = 2 * Math.PI - da;
-        if (da < 0.2 || dist(block[k], block[pk]) < 1.5) {
-          block.splice(k, 1); classes.splice(k, 1); changed = true; break;
-        }
-      }
+  const bbox = poly => { let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity; for (const q of poly) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); } return [x0, x1, y0, y1]; };
+  // Index des bâtiments posés (pour éviter les chevauchements)
+  const BH = new Map();
+  const bKeys = poly => { const c = Geo.centroid(poly); return [Math.floor(c[0] / 20), Math.floor(c[1] / 20)]; };
+  const placeB = poly => { const [x, y] = bKeys(poly), k = x + ',' + y; if (!BH.has(k)) BH.set(k, []); BH.get(k).push({ poly, bb: bbox(poly) }); };
+  const clashB = poly => {
+    const [x, y] = bKeys(poly), b = bbox(poly);
+    for (let dx = -1; dx <= 1; dx++) for (let dy = -1; dy <= 1; dy++) for (const q of BH.get((x + dx) + ',' + (y + dy)) || []) {
+      if (q.bb[1] < b[0] || b[1] < q.bb[0] || q.bb[3] < b[2] || b[3] < q.bb[2]) continue;
+      if (overlaps(q.poly, poly)) return true;
     }
-    const s = Geo.area(block) > 0 ? 1 : -1;
-    const placed = [];
-    city.ground[suburb ? 'garden' : interiorGround(zone)].push(block);
-    let count = 0;
-    for (let i = 0; i < block.length; i++) {
-      const A = block[i], B = block[(i + 1) % block.length];
-      const L = dist(A, B);
-      const cls = classes[i];
-      if (!FRONTS.has(cls) || (suburb && cls !== 'main') || L < 4) continue;
-      const u = [(B[0] - A[0]) / L, (B[1] - A[1]) / L], n = [-u[1] * s, u[0] * s];
-      const rich = cls === 'main' || cls === 'place' || cls === 'boulevard' || cls === 'quai';
-      const alley = cls === 'ruelle';
+    return false;
+  };
+  // Un bâtiment empiète-t-il sur une rue, un mur, l'eau, une falaise ou une réserve ?
+  const segPolyDist = (a, b, poly) => {
+    let m = Infinity;
+    for (let i = 0; i < poly.length; i++) {
+      const p = poly[i], q = poly[(i + 1) % poly.length];
+      if (segHit(a, b, p, q)) return 0;
+      m = Math.min(m, Geo.distToSegment(p, a, b), Geo.distToSegment(a, p, q), Geo.distToSegment(b, p, q));
+    }
+    return m;
+  };
+  const blocked = poly => {
+    const c = Geo.centroid(poly);
+    let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
+    for (const q of poly) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); }
+    const r = Math.hypot(x1 - x0, y1 - y0) / 2 + 8;
+    for (const sg of near(c, r)) {
+      const h = sg.half;
+      if (Math.max(sg.a[0], sg.b[0]) < x0 - h || Math.min(sg.a[0], sg.b[0]) > x1 + h || Math.max(sg.a[1], sg.b[1]) < y0 - h || Math.min(sg.a[1], sg.b[1]) > y1 + h) continue;
+      if (segPolyDist(sg.a, sg.b, poly) < h) return true;
+    }
+    return poly.some(q => inReserve(q)) || inReserve(c);
+  };
+  // Distance libre devant soi (jusqu'à la rue d'en face, un mur, l'eau…) et ce qu'on rencontre
+  const reachAlong = (o, n, maxD) => {
+    let best = maxD, what = null;
+    for (let s = 0; s <= maxD; s += SH) for (const sg of near([o[0] + n[0] * s, o[1] + n[1] * s], SH)) {
+      const h = segHit(o, [o[0] + n[0] * maxD, o[1] + n[1] * maxD], sg.a, sg.b);
+      if (!h) continue;
+      const d = h.t * maxD - sg.half;
+      if (d < best) { best = d; what = sg.kind; }
+    }
+    return [best, what];
+  };
+
+  const TREES = { vieille: 0.05, bourg: 0.25, neuf: 0.45, faubourg: 0.5, citadelle: 0.15 };
+  const mainHouses = [];
+  let people = 0;
+  // Une rangée de lots le long d'une ligne (bord de rue ou bord de place), d'un côté
+  const frontageLine = (pts, side, cls, opt) => {
+    const rand = rng('lots|' + opts.size + '|' + opt.key);
+    const half = opt.offset != null ? opt.offset : HALF[cls] + 0.4;
+    const rich = ['main', 'place', 'boulevard', 'quai'].includes(cls);
+    const alley = cls === 'ruelle';
+    let acc = 0, segI = 0, segT = 0;
+    const P = pts, L = polyLen(P);
+    const pointAt = s => {
+      let a = 0;
+      for (let i = 0; i + 1 < P.length; i++) { const l = dist(P[i], P[i + 1]); if (a + l >= s) { const t = (s - a) / (l || 1); return [P[i][0] + (P[i + 1][0] - P[i][0]) * t, P[i][1] + (P[i + 1][1] - P[i][1]) * t]; } a += l; }
+      return P[P.length - 1];
+    };
+    let t = opt.startGap || 0, rowDepth = null, zone0 = null;
+    while (t < L - 3) {
+      const mid0 = pointAt(t + 3);
+      const zone = opt.zone || zoneOf(cellAt(mid0));
+      const Z = ZONES[zone];
+      if (zone !== zone0) { rowDepth = between(rand, Z.depth) * (rich ? 1.2 : alley ? 0.8 : 1); zone0 = zone; }
       const front = rich ? [Z.front[0], Z.front[0] + 2.5] : alley ? [Z.front[0] + 2, Z.front[1] + 3] : Z.front;
-      const skip = (alley ? 0.45 : suburb ? 0.35 : zone === 'neuf' ? 0.08 : 0.03) + (onSlope ? 0.3 : 0);
-      const rowDepth = between(rand, Z.depth) * (rich ? 1.2 : alley ? 0.8 : 1) * (onSlope ? 0.7 : 1);   // profondeur commune à la rangée
-      let t = 0;
-      while (t < L - 1) {
-        let w = between(rand, front);
-        if (L - (t + w) < front[0] * 0.7) w = L - t;
-        const P0 = [A[0] + u[0] * t, A[1] + u[1] * t], P1 = [A[0] + u[0] * (t + w), A[1] + u[1] * (t + w)];
-        const mid = [A[0] + u[0] * (t + w / 2), A[1] + u[1] * (t + w / 2)];
-        t += w;
-        const reach = rayExit(block, [mid[0] + n[0] * 0.1, mid[1] + n[1] * 0.1], n);
-        if (!isFinite(reach) || reach < 5) continue;
-        if (rand() < skip) {
-          city.fences.push([P0, P1]);          // mur de jardin sur la rue
-          continue;
-        }
-        let d = Math.min(rowDepth * between(rand, [0.85, 1.15]), reach * 0.5);
-        // Maison d'angle : si elle gêne, on la raccourcit côté coin, puis en profondeur
-        let house = null;
-        const trims = [[0, 0], [0, 0.35], [0.35, 0], [0, 0.6], [0.6, 0]];
-        for (const df of [1, 0.65]) for (const [ta, tb] of trims) {
-          if (house) break;
-          const tryD = d * df;
-          if (tryD < 4) continue;
-          const Q0 = [P0[0] + u[0] * w * ta, P0[1] + u[1] * w * ta], Q1 = [P1[0] - u[0] * w * tb, P1[1] - u[1] * w * tb];
-          const r0 = intersectConvex([Q0, Q1, [Q1[0] + n[0] * tryD, Q1[1] + n[1] * tryD], [Q0[0] + n[0] * tryD, Q0[1] + n[1] * tryD]], block);
-          if (r0.length >= 3 && Math.abs(Geo.area(r0)) > 12 && !placed.some(p => overlaps(p, r0)) && !onCliff(r0)) { house = r0; d = tryD; }
-        }
-        if (!house) continue;
-        placed.push(house);
-        addHouse(house, zone, rand, rich);
-        count++;
-        if (cls === 'main' && !suburb) mainHouses.push({ poly: house, at: Geo.centroid(house), district: currentDistrict });
-        // Arrière-corps : un second bâtiment au fond de la cour (logis, atelier), surtout en vieille ville
-        let rearBuilt = false;
-        if (rand() < Z.rear) {
-          const gap = between(rand, [2, 4]), d2 = between(rand, [5, 9]);
-          if (d + gap + d2 < reach * 0.85) {
-            const a0 = d + gap, a1 = d + gap + d2, k0 = 0.05, k1 = 0.95;
-            const Q0 = [P0[0] + u[0] * w * k0, P0[1] + u[1] * w * k0], Q1 = [P0[0] + u[0] * w * k1, P0[1] + u[1] * w * k1];
-            const r1 = intersectConvex([[Q0[0] + n[0] * a0, Q0[1] + n[1] * a0], [Q1[0] + n[0] * a0, Q1[1] + n[1] * a0],
-              [Q1[0] + n[0] * a1, Q1[1] + n[1] * a1], [Q0[0] + n[0] * a1, Q0[1] + n[1] * a1]], block);
-            if (r1.length >= 3 && Math.abs(Geo.area(r1)) > 15 && !placed.some(p => overlaps(p, r1)) && !onCliff(r1)) {
-              placed.push(r1);
-              addHouse(r1, zone, rand, false);
-              const rr = ridgeOf(r1, u);
-              if (rr) city.ridges.push(rr);
-              count++;
-              rearBuilt = true;
-            }
+      let w = between(rand, front);
+      if (L - (t + w) < 3) w = L - t;
+      const A = pointAt(t), B = pointAt(t + w);
+      t += w;
+      const u = norm([B[0] - A[0], B[1] - A[1]]), n = [-u[1] * side, u[0] * side];
+      const F0 = [A[0] + n[0] * half, A[1] + n[1] * half], F1 = [B[0] + n[0] * half, B[1] + n[1] * half];
+      const Fm = [(F0[0] + F1[0]) / 2, (F0[1] + F1[1]) / 2];
+      const dom = domainAt(Fm);
+      if (opt.domain ? dom !== opt.domain : dom === 'out') continue;
+      if (opt.suburb && wallSegs.some(([a, b]) => Geo.distToSegment(Fm, a, b) < moat.outer + 5)) continue;
+      const sl = slopeAt(Fm);
+      if (sl > SLOPE_MAX) continue;
+      const onSlope = sl > SLOPE_EASY;
+      const [reach, what] = reachAlong([Fm[0] + n[0] * 0.2, Fm[1] + n[1] * 0.2], n, 70);
+      const lotDepth = Math.min(what === 'street' ? reach / 2 : reach - 1, 42);
+      if (lotDepth < 5) continue;
+      const skip = (alley ? 0.45 : opt.suburb ? 0.35 : zone === 'neuf' ? 0.08 : 0.03) + (onSlope ? 0.3 : 0);
+      if (rand() < skip) { city.fences.push([F0, F1]); continue; }
+      let d = Math.min(rowDepth * between(rand, [0.85, 1.15]) * (onSlope ? 0.7 : 1), lotDepth * 0.85);
+      let house = null;
+      const trims = [[0, 0], [0, 0.35], [0.35, 0], [0, 0.6], [0.6, 0]];
+      for (const df of [1, 0.65]) for (const [ta, tb] of trims) {
+        if (house) break;
+        const tryD = d * df;
+        if (tryD < 4) continue;
+        const Q0 = [F0[0] + u[0] * w * ta, F0[1] + u[1] * w * ta], Q1 = [F1[0] - u[0] * w * tb, F1[1] - u[1] * w * tb];
+        const r0 = [Q0, Q1, [Q1[0] + n[0] * tryD, Q1[1] + n[1] * tryD], [Q0[0] + n[0] * tryD, Q0[1] + n[1] * tryD]];
+        if (Math.abs(Geo.area(r0)) > 12 && r0.every(q => domainAt(q) === dom && slopeAt(q) <= SLOPE_MAX) && !onCliff(r0) && !clashB(r0) && !blocked(r0)) { house = r0; d = tryD; }
+      }
+      if (!house) continue;
+      placeB(house);
+      addHouse(house, zone, rand, rich);
+      people += Z.people;
+      if (cls === 'main' && !opt.suburb) mainHouses.push({ poly: house, at: Geo.centroid(house), district: cellAt(Fm).district });
+      const ridge = ridgeOf(house, w < d ? n : u);   // pignon sur rue si la façade est étroite
+      if (ridge) city.ridges.push(ridge);
+      // Cour ou jardin derrière la maison, jusqu'au fond de la parcelle
+      const back = [house[3], house[2], [house[2][0] + n[0] * (lotDepth - d), house[2][1] + n[1] * (lotDepth - d)], [house[3][0] + n[0] * (lotDepth - d), house[3][1] + n[1] * (lotDepth - d)]];
+      if (lotDepth - d > 2 && !blocked(back)) city.ground[opt.suburb ? 'garden' : Z.court].push(back);
+      if (t < L - 3) city.lotLines.push([house[2], [house[2][0] + n[0] * (lotDepth - d), house[2][1] + n[1] * (lotDepth - d)]]);
+      // Arrière-corps (logis, atelier) ou dépendance au fond de la cour
+      let rearBuilt = false;
+      if (rand() < Z.rear) {
+        const gap = between(rand, [2, 4]), d2 = between(rand, [5, 9]);
+        if (d + gap + d2 < lotDepth) {
+          const a0 = d + gap, a1 = d + gap + d2;
+          const r1 = [[F0[0] + u[0] * w * 0.05 + n[0] * a0, F0[1] + u[1] * w * 0.05 + n[1] * a0], [F1[0] - u[0] * w * 0.05 + n[0] * a0, F1[1] - u[1] * w * 0.05 + n[1] * a0],
+            [F1[0] - u[0] * w * 0.05 + n[0] * a1, F1[1] - u[1] * w * 0.05 + n[1] * a1], [F0[0] + u[0] * w * 0.05 + n[0] * a1, F0[1] + u[1] * w * 0.05 + n[1] * a1]];
+          if (r1.every(q => domainAt(q) === dom) && !onCliff(r1) && !clashB(r1) && !blocked(r1)) {
+            placeB(r1); addHouse(r1, zone, rand, false); people += Z.people; rearBuilt = true;
+            const rr = ridgeOf(r1, u); if (rr) city.ridges.push(rr);
           }
         }
-        const ridge = ridgeOf(house, w < d ? n : u);   // pignon sur rue si la façade est étroite
-        if (ridge) city.ridges.push(ridge);
-        // Limite de parcelle derrière la maison
-        if (t < L - 1) {
-          const len = Math.min(reach * 0.75, d + between(rand, [8, 18]));
-          city.lotLines.push([[P1[0] + n[0] * d, P1[1] + n[1] * d], [P1[0] + n[0] * len, P1[1] + n[1] * len]]);
-        }
-        // Dépendance au fond de la cour
-        if (!rearBuilt && rand() < Z.annex) {
-          const ad = between(rand, [3, 5.5]), gap = between(rand, [1.5, 4]);
-          const cc = [mid[0] + n[0] * (d + gap + ad / 2), mid[1] + n[1] * (d + gap + ad / 2)];
+      }
+      if (!rearBuilt && rand() < Z.annex) {
+        const ad = between(rand, [3, 5.5]), gap = between(rand, [1.5, 4]);
+        if (d + gap + ad < lotDepth) {
+          const cc = [Fm[0] + n[0] * (d + gap + ad / 2), Fm[1] + n[1] * (d + gap + ad / 2)];
           const shed = rect(cc, u, w * between(rand, [0.4, 0.75]), ad);
-          if (shed.every(q => inside(block, q)) && !placed.some(p => overlaps(p, shed)) && !onCliff(shed)) { city.annexes.push(shed); placed.push(shed); }
+          if (shed.every(q => domainAt(q) === dom) && !onCliff(shed) && !clashB(shed) && !blocked(shed)) { placeB(shed); city.annexes.push(shed); }
         }
       }
     }
-    // Arbres dans les cœurs d'îlots
-    const [c, ir] = inradius(block);
-    const nTrees = Math.round(TREES[zone] * Math.abs(Geo.area(block)) / 250);
-    for (let k = 0; k < nTrees * 3 && k < 40; k++) {
-      if (city.trees.length && k >= nTrees * 3) break;
-      const a = rand() * Math.PI * 2, dd = rand() * ir;
-      const p = [c[0] + Math.cos(a) * dd, c[1] + Math.sin(a) * dd], r = between(rand, [2.5, 4.5]);
-      const blob = rect(p, [1, 0], r * 2, r * 2);
-      if (inside(block, p) && !placed.some(q => overlaps(q, blob))) { city.trees.push([p[0], p[1], r]); placed.push(blob); }
-    }
-    return count;
   };
+  // Maisons le long de toutes les rues de la ville, des deux côtés
+  streets.forEach((st, si) => {
+    if (st.cls === 'road') return;
+    for (const side of [-1, 1]) frontageLine(st.points, side, st.cls, { key: 's' + si + side });
+  });
+  // Maisons autour de la place du marché et des placettes (tournées vers la place)
+  reserves.filter(r => r.frontage).forEach((r, ri) => {
+    const P = [...r.poly, r.poly[0]], s = Geo.area(r.poly) > 0 ? -1 : 1;
+    for (let i = 0; i + 1 < P.length; i++) frontageLine([P[i], P[i + 1]], s, 'place', { key: 'r' + ri + '-' + i, offset: 0.8 });
+  });
+  // Faubourgs : maisons le long des routes, juste hors les murs
+  streets.forEach((st, si) => {
+    if (st.cls !== 'road') return;
+    const inReach = st.points.filter(p => Math.hypot(...p) < R * 1.45);
+    if (inReach.length > 1) for (const side of [-1, 1]) frontageLine(inReach, side, 'road', { key: 'f' + si + side, domain: 'out', zone: 'faubourg', suburb: true });
+  });
 
-  // Correspondance bord rétréci → bord d'origine (pour connaître la nature de la rue)
-  const classesAfterInset = (poly, dists, classes, block) => {
-    const s = Geo.area(poly) > 0 ? 1 : -1;
-    return block.map((P, j) => {
-      const Q = block[(j + 1) % block.length], M = [(P[0] + Q[0]) / 2, (P[1] + Q[1]) / 2];
-      for (let i = 0; i < poly.length; i++) {
-        const A = poly[i], B = poly[(i + 1) % poly.length], L = dist(A, B);
-        if (L < 1e-6) continue;
-        const u = [(B[0] - A[0]) / L, (B[1] - A[1]) / L], n = [-u[1] * s, u[0] * s];
-        const sd = (M[0] - A[0]) * n[0] + (M[1] - A[1]) * n[1], tt = (M[0] - A[0]) * u[0] + (M[1] - A[1]) * u[1];
-        if (Math.abs(sd - dists[i]) < 0.35 && tt > -1 && tt < L + 1) return classes[i];
-      }
-      return 'none';
-    });
-  };
-
-  // Églises de paroisse : une par quartier (sauf celui de la cathédrale), sur un îlot proche du cœur du quartier
-  const mainHouses = [];
-  let currentDistrict = null;
+  // Arbres dans les cœurs d'îlots (plus nombreux dans les quartiers récents)
   {
-    const rC = rng('paroisses');
-    const saints = SAINTS.slice();
-    districts.forEach((d, k) => {
-      if (d.cells.some(c => c.building && c.building.id === 'temple')) return;
-      const mid = d.labelCell.site;
-      const cands = fcells.filter(fc => fc.coarse.district === k && fc.coarse.inner && !fc.coarse.citadel && !fc.suburb
-        && !fc.square && !fc.mainSquare && fArea[fc.index] > 450 && fArea[fc.index] < 3200);
-      if (!cands.length) return;
-      const fc = cands.reduce((m, f) => {
-        const df = dist(Geo.centroid(f.ids.map(id => fverts[id])), mid), dm = dist(Geo.centroid(m.ids.map(id => fverts[id])), mid);
-        return df + (f.coarse === d.labelCell ? 40 : 0) < dm + (m.coarse === d.labelCell ? 40 : 0) ? f : m;
-      });
-      fc.church = saints.splice(Math.floor(rC() * saints.length), 1)[0] || 'Saint-Pierre';
-      fc.churchDistrict = k;
-    });
-    // La ville haute a sa propre église (une collégiale, comme Saint-Quiriace à Provins)
-    if (twin) {
-      const up = fcells.filter(fc => fc.coarse.citadel && !fc.coarse.building && fArea[fc.index] > 400 && fArea[fc.index] < 3500);
-      if (up.length) {
-        const fc = up[Math.floor(rC() * up.length)];
-        fc.church = 'Collégiale ' + (saints.splice(Math.floor(rC() * saints.length), 1)[0] || 'Saint-Pierre');
-        fc.churchDistrict = -1;
-      }
+    const rT2 = rng('arbres|' + opts.size);
+    const xs = wallPoly.map(p => p[0]), ys = wallPoly.map(p => p[1]);
+    const area = Math.abs(Geo.area(wallPoly));
+    for (let k = 0, n = Math.round(area / 140); k < n; k++) {
+      const p = [between(rT2, [Math.min(...xs), Math.max(...xs)]), between(rT2, [Math.min(...ys), Math.max(...ys)])];
+      const dom = domainAt(p);
+      if (dom === 'out') continue;
+      const zone = zoneOf(cellAt(p));
+      if (rT2() > TREES[zone] * 1.6) continue;
+      const r = between(rT2, [2.5, 4.5]), blob = rect(p, [1, 0], r * 2, r * 2);
+      if (slopeAt(p) > SLOPE_MAX || clashB(blob) || blocked(blob)) continue;
+      placeB(blob);
+      city.trees.push([p[0], p[1], r]);
     }
   }
 
-  let people = 0;
-  for (const fc of fcells) {
-    const poly = fc.ids.map(id => fverts[id]);
-    const keys = fEdges(fc).map(([a, b]) => fek(a, b));
-    const classes = keys.map(k => fclass.get(k));
-    const dists = keys.map((k, i) => {
-      const c = classes[i];
-      if (c === 'river') return riverEdgeW.get(fineOnCoarse.get(k)) / 2 + 2.5;
-      if (c === 'quai') return riverEdgeW.get(fineOnCoarse.get(k)) / 2 + 7;     // berge + rue du quai
-      if (c === 'wall' && fc.suburb) return moat.outer + 4;                      // pas de maison dans le fossé
-      return INSET[c];
-    });
-    const block = Geo.inset(poly, dists);
-    if (block.length < 3) {
-      // Cellule trop fine pour bâtir : un bout de jardin plutôt qu'un vide
-      const sliver = Geo.inset(poly, dists.map(d => d * 0.6));
-      if (sliver.length >= 3) city.ground.garden.push(sliver);
-      continue;
-    }
-    const rand = rng('parcelle|' + opts.size + '|' + fc.coarse.index + '|' + fc.index);
-    if (fc.mainSquare) {
-      // Place centrale de la bastide, bordée de couverts (arcades)
-      city.plaza.push(block);
-      const arc = Geo.inset(block, 3.5);
-      if (arc.length >= 3) city.arcades.push(arc);
-      const [ctr, ir] = inradius(block);
-      const hall = rect(ctr, lat.u, Math.min(ir * 1.2, 22), Math.min(ir * 0.7, 12));   // halle couverte
-      const wOff = Math.min(ir * 0.7, 12) / 2 + 5;
-      city.wells.push([ctr[0] + lat.v[0] * wOff, ctr[1] + lat.v[1] * wOff, 2.4]);       // puits à côté de la halle
-      city.halls.push(hall);
-      if (!city.labels.some(l => l.text === 'Marché')) city.labels.push({ at: [ctr[0], ctr[1] - Math.min(ir * 0.55, 14)], text: 'Marché' });
-      continue;
-    }
-    if (fc.square) {
-      const sq = squares.find(x => x.fc === fc);
-      const [ctr] = inradius(block);
-      sq.poly = block; sq.at = ctr;
-      city.plaza.push(block);
-      city.wells.push([ctr[0], ctr[1], 2]);
-      continue;
-    }
-    if (fc.church) {
-      // Église orientée vers l'est (chœur et abside à l'est, clocher à l'ouest), dans son cimetière
-      city.ground.garden.push(block);
-      const [ctr, ir] = inradius(block);
-      const len = Math.min(ir * 1.7, 30), wid = len * 0.34;
-      const nave = rect(ctr, [1, 0], len, wid);
-      const apse = circle([ctr[0] + len / 2, ctr[1]], wid / 2, 16);
-      const tower = rect([ctr[0] - len / 2 - wid * 0.3, ctr[1]], [1, 0], wid * 0.7, wid * 0.7);
-      const tombs = [];
-      for (let k = 0; k < 14; k++) {
-        const p = [ctr[0] + (rand() - 0.5) * ir * 1.6, ctr[1] + (rand() - 0.5) * ir * 1.6];
-        const t = rect(p, [1, 0], 1.6, 2.8);
-        if (t.every(q => inside(block, q)) && !overlaps(t, nave) && !overlaps(t, tower) && !overlaps(t, rect([ctr[0] + len / 2, ctr[1]], [1, 0], wid, wid))) tombs.push(t);
-      }
-      city.churches.push({ name: fc.church, district: fc.churchDistrict, nave, apse, tower, tombs, yard: block, at: [ctr[0], ctr[1] + wid * 0.5 + 6] });
-      people += 0;
-      continue;
-    }
-    currentDistrict = fc.coarse.inner && !fc.coarse.citadel ? fc.coarse.district : null;
-    // Pente vérifiée sur la parcelle elle-même (centre et coins) : au-delà de 25 %, pas de maison
-    const fSlope = Math.max(slopePct(...Geo.centroid(block)), ...block.map(p => slopePct(...p)) .sort((a, b) => b - a).slice(1, 2));
-    if (fSlope > SLOPE_MAX) { city.terraces.push(block); continue; }
-    if (fc.suburb) city.suburbGround.push(block);
-    people += frontage(block, classesAfterInset(poly, dists, classes, block), fc.zone, rand, fc.suburb, fSlope) * ZONES[fc.zone].people;
-  }
+  // Réseau dessiné : toutes les rues, avec leur largeur
+  city.streetNet = streets.map(st => ({ points: st.points, cls: st.cls }));
+  city.roads = streets.filter(st => st.cls === 'main' || st.cls === 'road').map(st => st.points);
 
-  // Quartiers non redécoupés : place, monuments, pentes, champs
+  // ================= 14b. Place, monuments, églises, champs =================
   const withRiver = (k, d) => (riverEdgeW.has(k) ? Math.max(d, riverEdgeW.get(k) / 2 + 2.5) : d);
   const edgeInset = k => withRiver(k,
     wallEdges.has(k) ? 7 : citadelEdges.has(k) ? 6 : oldWallEdges.has(k) ? 4 : roadEdges.has(k) ? 5.5 : 3.5);
+
+  // Place du marché (couverts et halle dans une bastide)
+  {
+    const rand = rng('marche-dessin|' + opts.size);
+    city.plaza.push(marketPoly);
+    const [ctr, ir] = inradius(marketPoly);
+    if (bastide) {
+      const arc = Geo.inset(marketPoly, 3.5);
+      if (arc.length >= 3) city.arcades.push(arc);
+      city.halls.push(rect(ctr, lat.u, Math.min(ir * 1.2, 22), Math.min(ir * 0.7, 12)));
+      const wOff = Math.min(ir * 0.7, 12) / 2 + 5;
+      city.wells.push([ctr[0] + lat.v[0] * wOff, ctr[1] + lat.v[1] * wOff, 2.4]);
+    } else {
+      city.wells.push([ctr[0], ctr[1], 2.6]);
+      const ax = norm([marketPoly[1][0] - marketPoly[0][0], marketPoly[1][1] - marketPoly[0][1]]);
+      for (let k = 0; k < 10; k++) {
+        const a = rand() * Math.PI * 2, d = between(rand, [8, Math.max(9, ir * 0.75)]);
+        const st = rect([ctr[0] + Math.cos(a) * d, ctr[1] + Math.sin(a) * d], ax, between(rand, [3, 5]), between(rand, [2, 3]));
+        if (st.every(q => inPoly(marketPoly, q))) city.stalls.push(st);
+      }
+    }
+    city.labels.push({ at: [ctr[0], ctr[1] - Math.min(ir * 0.55, 14)], text: 'Marché' });
+  }
+  // Placettes
+  for (const sq of squares) { city.plaza.push(sq.poly); city.wells.push([sq.at[0], sq.at[1], 1.8]); }
+  // Églises de paroisse
+  for (const sp of churchSpots) {
+    const rand = rng('eglise|' + sp.name);
+    city.ground.garden.push(sp.poly);
+    const [ctr, ir] = inradius(sp.poly);
+    const len = Math.min(ir * 1.7, 26), wid = len * 0.34;
+    const nave = rect(ctr, [1, 0], len, wid);
+    const apse = circle([ctr[0] + len / 2, ctr[1]], wid / 2, 16);
+    const tower = rect([ctr[0] - len / 2 - wid * 0.3, ctr[1]], [1, 0], wid * 0.7, wid * 0.7);
+    const tombs = [];
+    for (let k = 0; k < 14; k++) {
+      const p = [ctr[0] + (rand() - 0.5) * 26, ctr[1] + (rand() - 0.5) * 20];
+      const t = rect(p, [1, 0], 1.6, 2.8);
+      if (t.every(q => inPoly(sp.poly, q)) && !overlaps(t, nave) && !overlaps(t, tower) && !overlaps(t, rect([ctr[0] + len / 2, ctr[1]], [1, 0], wid, wid))) tombs.push(t);
+    }
+    city.churches.push({ name: sp.name, district: sp.district, nave, apse, tower, tombs, yard: sp.poly, at: [ctr[0], ctr[1] + wid * 0.5 + 6] });
+  }
 
   const special = (b, yard, rand, c) => {
     const S = { id: b.id, label: b.label, district: c.district, inner: !!c.inner, yard: [yard], yardColor: 'court', shapes: [] };
@@ -1496,7 +1559,6 @@ function generateCity(opts) {
     const fill = color => ({ fill: color, stroke: 1.1 });
     switch (b.id) {
       case 'temple': {
-        // Croix latine orientée vers l'est (chœur à l'est), parvis à l'ouest
         const r = ir * 0.95, e = [1, 0];
         S.shapes.push({ polys: [rect([ctr[0] - r * 0.1, ctr[1]], e, r * 1.6, r * 0.42), rect([ctr[0] + r * 0.25, ctr[1]], [0, 1], r * 1.15, r * 0.34)], ...fill('temple'), outline: true });
         S.shapes.push({ polys: [circle([ctr[0] + r * 0.7, ctr[1]], r * 0.21, 20)], ...fill('temple'), outline: true });
@@ -1514,32 +1576,22 @@ function generateCity(opts) {
         label.at = [ctr[0], ctr[1] + ir * 0.62];
         break;
       }
-      case 'palais':
-      case 'universite':
-      case 'hospice':
-      case 'caserne':
-      case 'monastere': {
+      case 'palais': case 'universite': case 'hospice': case 'caserne': case 'monastere': {
         const color = { palais: 'noble', universite: 'school', hospice: 'temple', caserne: 'military', monastere: 'temple' }[b.id];
         S.shapes.push({ polys: [Geo.scale(yard, 0.72), Geo.scale(yard, 0.42)], fill: color, stroke: 1.1, evenodd: true });
         if (b.id === 'monastere') S.shapes.push({ polys: [rect([ctr[0], ctr[1] - ir * 0.95], [1, 0], ir * 0.9, ir * 0.28)], fill: 'temple', stroke: 1.1 });
-        if (b.id === 'monastere' || b.id === 'hospice') {
-          const g = Geo.scale(yard, 0.36);
-          S.shapes.push({ polys: [g], fill: 'green' });
-        }
+        if (b.id === 'monastere' || b.id === 'hospice') S.shapes.push({ polys: [Geo.scale(yard, 0.36)], fill: 'green' });
         break;
       }
-      case 'guildes':
-      case 'prison':
-      case 'bains': {
+      case 'guildes': case 'prison': case 'bains': {
         const color = { guildes: 'guild', prison: 'military', bains: 'baths' }[b.id];
         S.shapes.push({ polys: [Geo.scale(yard, 0.55)], fill: color, stroke: 1.2 });
         break;
       }
-      case 'arene': {
+      case 'arene':
         S.shapes.push({ polys: [circle(ctr, ir * 0.85)], fill: 'stone', stroke: 1.2 });
         S.shapes.push({ polys: [circle(ctr, ir * 0.5)], fill: 'sand', stroke: 0.8 });
         break;
-      }
       case 'cimetiere': {
         S.yardColor = 'green';
         const zone = Geo.inset(yard, 6), tombs = [];
@@ -1555,21 +1607,18 @@ function generateCity(opts) {
         break;
       }
       case 'port': {
-        // Quai et entrepôts parallèles à la rive
         S.yardColor = 'quay';
-        const rk = cellEdges(c).map(([a, b]) => ek(a, b)).find(k => riverEdgeW.has(k));
+        const rk = cellEdges(c).map(([a, b2]) => ek(a, b2)).find(k => riverEdgeW.has(k));
         let dir = [1, 0];
-        if (rk) { const [a, b] = unkey(rk); const L = dist(verts[a], verts[b]); dir = [(verts[b][0] - verts[a][0]) / L, (verts[b][1] - verts[a][1]) / L]; }
+        if (rk) { const [a, b2] = unkey(rk); dir = norm([verts[b2][0] - verts[a][0], verts[b2][1] - verts[a][1]]); }
         const ware = stripCut(Geo.inset(yard, 8), [-dir[1], dir[0]], [9, 14], rand).filter((_, i) => i % 2 === 0);
         S.shapes.push({ polys: ware.map(p => Geo.inset(p, 1)).filter(p => p.length >= 3), fill: 'tile', stroke: 0.8 });
         break;
       }
       case 'sanctuaire': {
-        // Petit temple à colonnes orienté vers l'est, dans un enclos herbeux
         S.yardColor = 'green';
         const r = Math.min(ir * 0.8, 16);
-        const t = rect(ctr, [1, 0], r * 1.5, r * 0.8);
-        S.shapes.push({ polys: [t], fill: 'temple', stroke: 1.1 });
+        S.shapes.push({ polys: [rect(ctr, [1, 0], r * 1.5, r * 0.8)], fill: 'temple', stroke: 1.1 });
         const cols = [];
         for (let i = 0; i < 6; i++) for (const sy of [-1, 1]) cols.push(circle([ctr[0] - r * 0.6 + i * r * 0.24, ctr[1] + sy * r * 0.48], 0.9, 8));
         S.shapes.push({ polys: cols, fill: 'stone', stroke: 0.4 });
@@ -1578,55 +1627,42 @@ function generateCity(opts) {
         label.italic = true;
         break;
       }
-      case 'moulin': {
+      case 'moulin':
         S.yardColor = 'field1';
         S.shapes.push({ polys: [circle(ctr, 6, 16)], fill: 'building', stroke: 1 });
         S.shapes.push({ lines: [0, 1, 2, 3].map(i => { const a = Math.PI / 4 + (i * Math.PI) / 2; return [ctr, [ctr[0] + Math.cos(a) * 15, ctr[1] + Math.sin(a) * 15]]; }), stroke: 2 });
         label.at = [ctr[0], ctr[1] + 24];
         break;
-      }
     }
     city.specials.push(S);
     city.labels.push(label);
   };
 
   for (const c of cells) {
-    if (isFine(c)) continue;
     const poly = c.ids.map(id => verts[id]);
     if (poly.length < 3) continue;
     const keys = cellEdges(c).map(([a, b]) => ek(a, b));
     const rand = rng('ilot|' + opts.size + '|' + c.index);
-    const block = Geo.inset(poly, keys.map(k => (wallEdges.has(k) && !c.inner ? moat.outer + 3 : edgeInset(k))));
-    if (block.length < 3) continue;
-
-    if (c.type === 'plaza') {
-      city.plaza.push(block);
-      // Puits et étals du marché
-      const [ctr, ir] = inradius(block);
-      city.wells.push([ctr[0], ctr[1], 2.6]);
-      const ax = [Math.cos(rand() * Math.PI), 0]; ax[1] = Math.sqrt(1 - ax[0] ** 2);
-      for (let k = 0; k < 9; k++) {
-        const a = rand() * Math.PI * 2, d = between(rand, [8, Math.max(9, ir * 0.7)]);
-        const st = rect([ctr[0] + Math.cos(a) * d, ctr[1] + Math.sin(a) * d], ax, between(rand, [3, 5]), between(rand, [2, 3]));
-        if (st.every(q => inside(block, q))) city.stalls.push(st);
-      }
-      city.labels.push({ at: [ctr[0], ctr[1] - Math.min(ir * 0.55, 14)], text: 'Marché' });
-    } else if (c.building) {
-      special(c.building, block, rand, c);
-    } else if (c.steep) {
-      (c.inner ? city.terraces : city.vineyards).push(block);   // pente : terrasses ou vignes, pas de maisons
-    } else {
-      // Champs en lanières (openfield), orientation propre à chaque quartier de terre
-      const field = Geo.inset(poly, keys.map(k => withRiver(k, wallEdges.has(k) ? moat.outer + 3 : roadEdges.has(k) ? 5.5 : 2)));
-      if (field.length < 3) continue;
-      const a = rand() * Math.PI;
-      const strips = stripCut(field, [Math.cos(a), Math.sin(a)], [10, 22], rand);
-      strips.forEach(st => city.fieldStrips[Math.floor(rand() * 3)].push(st));
-      if (rand() < 0.15) city.meadows.push(field);
+    if (c.building) {
+      const pr = precinctOf.get(c.index);
+      const yard = c.inner || c.citadel ? pr : Geo.inset(poly, keys.map(k => (wallEdges.has(k) ? moat.outer + 3 : edgeInset(k))));
+      if (yard && yard.length >= 3) special(c.building, yard, rand, c);
+      continue;
     }
+    if (c.inner || c.citadel) {
+      if (c.steep) { const t = Geo.inset(poly, 3); if (t.length >= 3) city.terraces.push(t); }   // pente : jardins en terrasses
+      continue;
+    }
+    const block = Geo.inset(poly, keys.map(k => (wallEdges.has(k) ? moat.outer + 3 : withRiver(k, 2))));
+    if (block.length < 3) continue;
+    if (c.steep) { city.vineyards.push(block); continue; }
+    // Champs en lanières (openfield), orientation propre à chaque parcelle de terre
+    const a = rand() * Math.PI;
+    stripCut(block, [Math.cos(a), Math.sin(a)], [10, 22], rand).forEach(st => city.fieldStrips[Math.floor(rand() * 3)].push(st));
+    if (rand() < 0.15) city.meadows.push(block);
   }
 
-  // ================= 15. Noms : rues, routes, auberges ; portes d'eau ; brèches =================
+  // ================= 15. Noms : rues, routes, auberges ; ponts, portes, escaliers =================
   {
     const rNm = rng('noms-rues|' + opts.size);
     const usedNames = new Set();
@@ -1638,101 +1674,113 @@ function generateCity(opts) {
       return v;
     };
     const claim = v => (usedNames.has(v) ? null : (usedNames.add(v), v));
-    const polyLen = pts => pts.reduce((acc, p, i) => (i ? acc + dist(pts[i - 1], p) : 0), 0);
     const gateText = gi => (city.gateNames[gi] ? city.gateNames[gi].text : 'Porte');
+    const label = (name, pts, cls) => city.streetLabels.push({ name, points: pts, cls });
 
-    // Grandes rues : de chaque porte au marché ; la plus longue est la Grand-Rue
-    const inner = roadMeta.map((m, i) => ({ m, i, pts: roads[i].map(id => verts[id]) })).filter(x => x.m.kind === 'inner');
-    const longest = inner.reduce((b, x) => (!b || polyLen(x.pts) > polyLen(b.pts) ? x : b), null);
+    // Grandes rues
     if (bastide) {
       const axisNames = { v0: 'Grand-Rue', v1: 'Rue des Couverts', u0: "Rue de l'Église", u1: 'Rue du Four-Banal' };
-      for (const ax of bastideAxes) {
-        const pts = ax.path.map(id => fverts[id]);
-        const name = axisNames[ax.id];
+      const byAxis = new Map();
+      streets.filter(st => st.axis).forEach(st => { if (!byAxis.has(st.axis) || polyLen(st.points) > polyLen(byAxis.get(st.axis).points)) byAxis.set(st.axis, st); });
+      for (const [ax, st] of byAxis) {
+        const name = axisNames[ax];
         usedNames.add(name);
-        city.streets.push({ name, kind: 'grande rue', length: Math.round(polyLen(pts)), detail: 'axe du damier, passe par la place' });
-        city.streetLabels.push({ name, points: pts, cls: 'main' });
+        city.streets.push({ name, kind: 'grande rue', length: Math.round(polyLen(st.points)), detail: 'axe du damier, passe par la place' });
+        label(name, st.points, 'main');
       }
     }
-    for (const x of bastide ? [] : inner) {
-      const name = x === longest ? 'Grand-Rue' : 'Rue de la ' + gateText(x.m.gate);
+    const innerRoads = streets.filter(st => st.kind === 'inner');
+    const longest = innerRoads.reduce((b, st) => (!b || polyLen(st.points) > polyLen(b.points) ? st : b), null);
+    for (const st of bastide ? [] : innerRoads) {
+      const name = st === longest ? 'Grand-Rue' : 'Rue de la ' + gateText(st.gate);
       usedNames.add(name);
-      city.streets.push({ name, kind: 'grande rue', length: Math.round(polyLen(x.pts)), detail: 'du Marché à la ' + gateText(x.m.gate) });
-      city.streetLabels.push({ name, points: x.pts, cls: 'main' });
+      city.streets.push({ name, kind: 'grande rue', length: Math.round(polyLen(st.points)), detail: 'du Marché à la ' + gateText(st.gate) });
+      label(name, st.points, 'main');
     }
-    roadMeta.forEach((m, i) => {
-      const pts = roads[i].map(id => verts[id]);
-      if (m.kind === 'citadel') {
+    for (const st of streets) {
+      if (st.kind === 'citadel') {
         const name = twin ? 'Montée de la Ville-Haute' : wanted.includes('chateau') ? 'Montée du Château' : 'Montée de la Citadelle';
-        city.streets.push({ name, kind: 'montée', length: Math.round(polyLen(pts)), detail: 'du Marché à la citadelle' });
-        city.streetLabels.push({ name, points: pts, cls: 'main' });
-      } else if (m.kind === 'outer') {
-        const town = cityName(rng('voisin|' + m.gate));
+        city.streets.push({ name, kind: 'montée', length: Math.round(polyLen(st.points)), detail: 'du Marché à la citadelle' });
+        label(name, st.points, 'main');
+      } else if (st.kind === 'outer') {
+        const town = cityName(rng('voisin|' + st.gate));
         const name = 'Route de ' + town;
-        city.neighbours.push({ name: town, gate: gateText(m.gate) });
-        city.streets.push({ name, kind: 'route', length: Math.round(polyLen(pts)), detail: 'sort par la ' + gateText(m.gate) });
-        city.streetLabels.push({ name, points: pts.slice(Math.floor(pts.length / 2)), cls: 'road' });
+        city.neighbours.push({ name: town, gate: gateText(st.gate) });
+        city.streets.push({ name, kind: 'route', length: Math.round(polyLen(st.points)), detail: 'sort par la ' + gateText(st.gate) });
+        label(name, st.points.slice(Math.floor(st.points.length / 2)), 'road');
+      } else if (st.kind === 'boulevard') {
+        const name = claim('Rue des Fossés') || claim('Rue des Anciens-Remparts') || claim('Rue du Vieux-Mur');
+        if (name) { city.streets.push({ name, kind: 'boulevard', length: Math.round(polyLen(st.points)), detail: 'sur le tracé de la vieille enceinte' }); label(name, st.points, 'boulevard'); }
+      } else if (st.kind === 'quai') {
+        const name = 'Quai ' + (pickFrom(['des Tanneurs', 'aux Fleurs', 'du Rosaire', 'des Bateliers', 'aux Vins', 'du Sel', 'des Augustins', 'de la Monnaie']) || 'Neuf');
+        city.streets.push({ name, kind: 'quai', length: Math.round(polyLen(st.points)), detail: 'le long de la rivière' });
+        label(name, st.points, 'rue');
+      } else if (st.kind === 'growth' || (st.kind === 'grid' && !st.axis)) {
+        const c = st.coarse || cellAt(st.points[Math.floor(st.points.length / 2)]), d = districts[c.district], zone = zoneOf(c);
+        const L = polyLen(st.points);
+        let name = null;
+        if (st.deadEnd) name = 'Impasse ' + (pickFrom(DEADEND_NAMES) || 'n° ' + (city.streets.length + 1));
+        else if (st.cls === 'ruelle') name = 'Ruelle ' + (pickFrom(ALLEY_NAMES) || 'n° ' + (city.streets.length + 1));
+        else {
+          const trade = d && /^Quartier (des|du|de la) (.+)$/.exec(d.name);
+          const church = churchSpots.find(ch => ch.district === c.district);
+          const options = [];
+          if (trade && !/Porte|Marché|Halle|Château|Cathédrale/.test(trade[2])) options.push('Rue ' + trade[1] + ' ' + trade[2]);
+          if (church) options.push('Rue ' + church.name);
+          if (zone === 'neuf') options.push('Rue Neuve');
+          if (altitude(...st.points[0]) - baseAlt > reliefHeight * 0.35) options.push('Rue Haute');
+          if (rivers.length && riverDist(st.points[0]) < cellR) options.push('Rue Basse');
+          for (const o of options) if (rNm() < 0.6 && (name = claim(o))) break;
+          if (!name) name = 'Rue ' + (pickFrom(STREET_NAMES) || 'n° ' + (city.streets.length + 1));
+        }
+        city.streets.push({ name, kind: st.deadEnd ? 'impasse' : st.cls, length: Math.round(L), detail: d ? d.name : '' });
+        if (L > (st.cls === 'rue' ? 45 : 32)) label(name, st.points, st.cls);
       }
-    });
-
-    // Rues secondaires, ruelles, impasses : le nom vient du quartier, de son église, du relief
-    for (const sp of streetPaths) {
-      const pts = sp.path.map(id => fverts[id]);
-      const L = polyLen(pts);
-      const c = sp.coarse, d = districts[c.district], zone = zoneOf(c);
-      let name = null;
-      if (sp.deadEnd) name = 'Impasse ' + (pickFrom(DEADEND_NAMES) || 'du ' + (city.streets.length + 1));
-      else if (sp.cls === 'ruelle') name = 'Ruelle ' + (pickFrom(ALLEY_NAMES) || 'n° ' + (city.streets.length + 1));
-      else {
-        const trade = d && /^Quartier (des|du|de la) (.+)$/.exec(d.name);
-        const church = city.churches.find(ch => ch.district === c.district);
-        const options = [];
-        if (trade && !/Porte|Marché|Halle|Château|Cathédrale/.test(trade[2])) options.push('Rue ' + trade[1] + ' ' + trade[2]);
-        if (church) options.push('Rue ' + church.name);
-        if (zone === 'neuf') options.push('Rue Neuve');
-        if (c.elev > 0.35) options.push('Rue Haute');
-        if (rivers.length && riverDist(c.site) < cellR) options.push('Rue Basse', 'Rue du Quai');
-        for (const o of options) if (rNm() < 0.6 && (name = claim(o))) break;
-        if (!name) name = 'Rue ' + (pickFrom(STREET_NAMES) || 'n° ' + (city.streets.length + 1));
-      }
-      city.streets.push({ name, kind: sp.deadEnd ? 'impasse' : sp.cls, length: Math.round(L), detail: d ? d.name : '' });
-      if (L > (sp.cls === 'rue' ? 45 : 32)) city.streetLabels.push({ name, points: pts, cls: sp.cls });
     }
 
-    // Placettes : nom selon ce qui les entoure
+    // Placettes
     for (const sq of squares) {
-      if (!sq.poly) continue;
-      const c = sq.fc.coarse;
-      const church = city.churches.find(ch => ch.district === c.district && dist(ch.at, sq.at) < cellR * 2);
-      const opts2 = [];
-      if (church) opts2.push('Place ' + church.name);
-      if (rivers.length && riverDist(sq.at) < cellR) opts2.push('Marché au Poisson', 'Place du Quai');
-      if (zoneOf(c) === 'vieille') opts2.push('Place du Pilori', 'Place de la Croix');
+      const c = sq.cell;
+      const church = churchSpots.find(ch => ch.district === c.district && dist(Geo.centroid(ch.poly), sq.at) < cellR * 2);
+      const o2 = [];
+      if (church) o2.push('Place ' + church.name);
+      if (rivers.length && riverDist(sq.at) < cellR) o2.push('Marché au Poisson', 'Place du Quai');
+      if (zoneOf(c) === 'vieille') o2.push('Place du Pilori', 'Place de la Croix');
       let name = null;
-      for (const o of opts2) if ((name = claim(o))) break;
+      for (const o of o2) if ((name = claim(o))) break;
       if (!name) name = pickFrom(SQUARE_NAMES) || 'Placette';
       city.squares.push({ name, at: sq.at, district: c.district });
     }
 
-    // Escaliers : là où une rue franchit un ressaut
-    if (cliffSegs.length) {
-      const STAIR_NAMES = ['Escalier des Pénitents', 'Montée des Cent-Marches', 'Escalier du Guet', 'Degrés Saint-Jean', 'Escalier de la Chèvre',
-        'Montée des Lavandières', 'Escalier du Diable', 'Degrés des Chanoines', 'Escalier Noir', 'Montée du Pilori'];
-      const stairCls = new Set(['main', 'rue', 'ruelle', 'boulevard', 'place', 'quai']);
-      const roadSegs = [];
-      for (const [key, cls] of fclass) if (stairCls.has(cls)) { const [a, b] = unkey(key); roadSegs.push([fverts[a], fverts[b]]); }
-      roads.forEach((p, i) => { if (!(bastide && roadMeta[i].kind === 'inner')) for (let k = 0; k + 1 < p.length; k++) roadSegs.push([verts[p[k]], verts[p[k + 1]]]); });
-      for (const [a, b] of roadSegs) for (const [c, d] of cliffSegs) {
-        if (!segX(a, b, c, d)) continue;
-        // point d'intersection
-        const den = (b[0] - a[0]) * (d[1] - c[1]) - (b[1] - a[1]) * (d[0] - c[0]);
-        const t = ((c[0] - a[0]) * (d[1] - c[1]) - (c[1] - a[1]) * (d[0] - c[0])) / den;
-        const at = [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
-        if (city.stairs.some(st => dist(st.at, at) < 15)) continue;
-        const name = pickFrom(STAIR_NAMES) || 'Escalier';
-        city.stairs.push({ at, angle: (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI, name });
+    // Croisements des rues avec l'eau (ponts), les ressauts (escaliers) et les vieux murs (portes, brèches)
+    const STAIR_NAMES = ['Escalier des Pénitents', 'Montée des Cent-Marches', 'Escalier du Guet', 'Degrés Saint-Jean', 'Escalier de la Chèvre',
+      'Montée des Lavandières', 'Escalier du Diable', 'Degrés des Chanoines', 'Escalier Noir', 'Montée du Pilori'];
+    const standingOld = oldWalls.filter(w => w.standing).map(w => [verts[w.a], verts[w.b]]);
+    const riverSegs = city.rivers.flatMap(rv => rv.points.slice(1).map((p, i) => [rv.points[i], p, rv.w]));
+    for (const st of streets) {
+      const P = st.points;
+      for (let i = 0; i + 1 < P.length; i++) {
+        const a = P[i], b = P[i + 1], ang = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+        for (const [c, d, w] of riverSegs) {
+          const h = segHit(a, b, c, d);
+          if (h && !city.bridges.some(br => dist([br.x, br.y], h.at) < 12)) city.bridges.push({ x: h.at[0], y: h.at[1], angle: ang, length: w + 12 });
+        }
+        for (const [c, d] of cliffSegs) {
+          const h = segHit(a, b, c, d);
+          if (h && !city.stairs.some(s2 => dist(s2.at, h.at) < 15)) city.stairs.push({ at: h.at, angle: ang, name: pickFrom(STAIR_NAMES) || 'Escalier' });
+        }
+        if (st.cls === 'main' || st.cls === 'road') for (const [c, d] of standingOld) {
+          const h = segHit(a, b, c, d);
+          if (h && !city.oldGates.some(g => dist(g.at, h.at) < 12)) city.oldGates.push({ at: h.at, prev: c, next: d });
+        }
       }
     }
+    // Vieux murs : un tronçon traversé par une rue (hors porte) a une brèche
+    city.oldWalls = oldWalls.map(w => {
+      const a = verts[w.a], b = verts[w.b];
+      const crossed = w.standing && streets.some(st => st.cls !== 'main' && st.points.some((p, i) => i + 1 < st.points.length && segHit(p, st.points[i + 1], a, b)));
+      return { a, b, standing: w.standing, breachA: crossed, breachB: false };
+    });
 
     // Auberges : sur les grandes rues, près de chaque porte et près du marché
     const targets = [plaza.site, ...gates.map(g => verts[g])];
@@ -1761,24 +1809,12 @@ function generateCity(opts) {
         city.waterGates.push({ at: verts[v], dir: [(b[0] - a[0]) / L, (b[1] - a[1]) / L], w: rv.w });
       }
     }
-
-    // Brèches : là où une rue franchit un tronçon de vieux mur encore debout
-    const streetAt = new Set();
-    for (const [key, cls] of fclass) {
-      if (!['rue', 'ruelle', 'main', 'boulevard', 'place'].includes(cls)) continue;
-      for (const id of key.split('_').map(Number)) streetAt.add(fverts[id][0].toFixed(1) + ',' + fverts[id][1].toFixed(1));
-    }
-    const gateAt = new Set(oldGates.map(g => g.v));
-    const breach = v => !gateAt.has(v) && streetAt.has(verts[v][0].toFixed(1) + ',' + verts[v][1].toFixed(1));
-    city.oldWalls = oldWalls.map(w => ({ a: verts[w.a], b: verts[w.b], standing: w.standing, breachA: w.standing && breach(w.a), breachB: w.standing && breach(w.b) }));
   }
 
   // La citadelle a son étiquette
-  if (citadelSet.size > 1) {
-    const free = cells.filter(c => c.citadel && !c.building);
-    const ref = cells[[...citadelSet][0]].site;
-    const at = free.length ? free.reduce((m, c) => (dist(c.site, ref) < dist(m.site, ref) ? c : m)).site : ref;
-    city.labels.push({ at, text: twin ? 'Ville Haute' : 'Citadelle', italic: true });
+  if (citadelPoly) {
+    const cc = citadelPoly.reduce((a, p) => [a[0] + p[0] / citadelPoly.length, a[1] + p[1] / citadelPoly.length], [0, 0]);
+    city.labels.push({ at: [cc[0], cc[1] - 18], text: twin ? 'Ville Haute' : 'Citadelle', italic: true });
   }
 
   city.stats = {
@@ -1788,9 +1824,9 @@ function generateCity(opts) {
     gates: gates.length,
     rivers: rivers.length,
     relief, age,
-    diameter: Math.round((Math.max(...wall.map(id => verts[id][0])) - Math.min(...wall.map(id => verts[id][0]))) / 10) * 10,
-    streets: [...fclass.values()].filter(v => v === 'rue').length,
-    alleys: [...fclass.values()].filter(v => v === 'ruelle').length,
+    diameter: Math.round((Math.max(...wallPoly.map(p => p[0])) - Math.min(...wallPoly.map(p => p[0]))) / 10) * 10,
+    streets: streets.filter(st => st.cls === 'rue').length,
+    alleys: streets.filter(st => st.cls === 'ruelle').length,
     churches: city.churches.length,
     altitude: { base: baseAlt, min: Math.round(city.terrain.min), max: Math.round(city.terrain.maxAlt), plaza: Math.round(altitude(...plaza.site)),
       steepest: Math.round(Math.max(...city.terrain.slope)) },

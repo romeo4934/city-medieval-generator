@@ -29,7 +29,10 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 - **Double enceinte**, comme la Cité de Carcassonne : un mur extérieur plus bas précède le rempart, les lices s'étendent entre les deux, et une barbacane protège chaque porte.
 - **Ville haute et ville basse**, comme Provins : la ville haute, ancienne et dense, occupe le plateau dans sa propre enceinte avec le château et une collégiale ; la ville basse marchande s'étend au pied de la colline, dans la sienne ; une montée relie les deux.
 
-**Le parcellaire est organique.** Chaque quartier est redécoupé en petites cellules. Les îlots sont des assemblages irréguliers de ces cellules, séparés par les grandes routes, puis par des rues secondaires, des ruelles et des impasses tracées en travers des îlots trop grands. Les maisons ne bordent que les rues : les remparts, les berges et les cœurs d'îlots reçoivent des cours, des jardins, des arbres et des clôtures. Dehors, les champs sont en lanières (openfield).
+**Les rues d'abord, comme dans une vraie ville.** Les chemins existaient avant les maisons :
+1. **Les grandes rues** sont les chemins les moins pénibles sur le terrain, des portes au marché et vers les villes voisines. Elles contournent les pentes, montent en lacets, se rejoignent en Y et ne franchissent l'eau que par des ponts.
+2. **Les rues secondaires poussent** depuis les grandes rues, à peu près perpendiculaires et en suivant les courbes de niveau dans les pentes. Elles s'arrêtent sur une autre rue, un mur, l'eau, une falaise ou une pente trop forte, ce qui donne naturellement des impasses. Les vieux murs démolis deviennent des boulevards et une partie des berges des quais. Dans une bastide, ce sont les lignes du damier.
+3. **Les parcelles sont découpées le long des rues** : façade étroite, maison devant, cour ou jardin jusqu'au milieu de l'îlot, parfois un arrière-corps ou une dépendance. Les îlots sont simplement ce qui reste entre les rues : ils ont donc des formes variées. Dehors, les champs sont en lanières (openfield).
 
 **Les maisons dépendent du quartier.**
 - **Parcelles en lanières** : façade étroite sur rue, maison devant, cour ou jardin derrière, parfois une dépendance au fond.
@@ -75,7 +78,7 @@ Génère des plans de villes médiévales propres, lisibles et **cohérents**, p
 | `style.css` | la mise en page |
 | `geo.js` | outils : hasard reproductible, géométrie, Voronoi, plus courts chemins |
 | `catalog.js` | tailles, bâtiments, types de maisons, listes de noms |
-| `generator.js` | le modèle : relief, rivières, croissance, enceintes, routes, bâtiments, parcellaire, noms (données pures) |
+| `generator.js` | le modèle : relief, rivières, croissance, enceintes, réseau de rues (A* sur le terrain puis croissance), parcelles, noms (données pures) |
 | `lore.js` | la fiche de ville |
 | `render.js` | le dessin en SVG, placement des étiquettes |
 | `app.js` | l'interface : réglages, zoom, enregistrement, export |

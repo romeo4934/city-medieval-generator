@@ -12,6 +12,7 @@ const COLORS = {
   tree: '#b7c294',
   treeLine: '#8a9666',
   stall: '#d9b98e',
+  townGround: '#e7e1cd',
   dryMoat: '#d4d3b4',
   lices: '#e6e1cf',
   hall: '#b88f62',
@@ -322,27 +323,31 @@ function renderSVG(city, options = {}) {
     }
   }
 
-  // Sol pavé intra-muros (les rues = ce qui reste visible entre les îlots)
-  fill([city.wall], 'street');
+  // Sol de la ville (cœurs d'îlots), puis cours et jardins des parcelles
+  fill([city.wall], 'townGround');
+  if (city.citadel) fill([city.citadel.edges.map(e => e[0])], 'townGround');
+  fill(city.ground.court, 'court');
+  fill(city.ground.yard, 'yard');
+  fill(city.ground.garden, 'garden');
+  fill(city.terraces, 'url(#cmg-vines)');
 
   // Rivières : berge puis eau
   const riverD = city.rivers.map(rv => lineD(rv.points));
   city.rivers.forEach((rv, k) => out.push(`<path d="${riverD[k]}" fill="none" stroke="${COLORS.waterLine}" stroke-width="${n1(rv.w + 3)}" stroke-linecap="round" stroke-linejoin="round"/>`));
   city.rivers.forEach((rv, k) => out.push(`<path d="${riverD[k]}" fill="none" stroke="${COLORS.water}" stroke-width="${n1(rv.w)}" stroke-linecap="round" stroke-linejoin="round"/>`));
 
-  // Routes
-  const roadsD = city.roads.map(lineD).join('');
-  out.push(`<path d="${roadsD}" fill="none" stroke="${COLORS.roadEdge}" stroke-width="12" stroke-linecap="round" stroke-linejoin="round"/>`);
-  out.push(`<path d="${roadsD}" fill="none" stroke="${COLORS.street}" stroke-width="9" stroke-linecap="round" stroke-linejoin="round"/>`);
+  // Rues : chaque rue avec sa vraie largeur (bordure d'abord pour que les croisements se fondent)
+  const net = city.streetNet || [];
+  const widthOf = cls => 2 * ((city.streetHalf || {})[cls] || 3);
+  const byCls = new Map();
+  for (const st of net) { if (!byCls.has(st.cls)) byCls.set(st.cls, []); byCls.get(st.cls).push(lineD(st.points)); }
+  for (const [cls, ds] of byCls) out.push(`<path d="${ds.join('')}" fill="none" stroke="${COLORS.roadEdge}" stroke-width="${n1(widthOf(cls) + 1.6)}" stroke-linecap="round" stroke-linejoin="round"/>`);
+  for (const [cls, ds] of byCls) out.push(`<path d="${ds.join('')}" fill="none" stroke="${COLORS.street}" stroke-width="${n1(widthOf(cls))}" stroke-linecap="round" stroke-linejoin="round"/>`);
   for (const b of city.bridges) {
     out.push(`<rect x="${n1(-b.length / 2)}" y="-6" width="${n1(b.length)}" height="12" fill="${COLORS.street}" stroke="${COLORS.buildingLine}" stroke-width="1.5" transform="translate(${n1(b.x)} ${n1(b.y)}) rotate(${n1(b.angle)})"/>`);
   }
 
-  // Îlots : cours, jardins, terrasses, limites de parcelles
-  fill(city.ground.court, 'court');
-  fill(city.ground.yard, 'yard');
-  fill(city.ground.garden, 'garden');
-  fill(city.terraces, 'url(#cmg-vines)');
+  // Limites de parcelles, murs de jardin, dépendances, arbres
   if (city.lotLines.length) out.push(`<path d="${city.lotLines.map(lineD).join('')}" stroke="${COLORS.lotLine}" stroke-width="0.5"/>`);
   if (city.fences.length) out.push(`<path d="${city.fences.map(lineD).join('')}" stroke="${COLORS.fence}" stroke-width="1"/>`);
   fill(city.annexes, 'annex', ` stroke="${COLORS.buildingLine}" stroke-width="0.4"`);

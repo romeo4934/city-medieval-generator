@@ -80,6 +80,27 @@ for (let i = 0; i < COUNT; i++) {
       }
     });
     if (overlapsFound) fail('maisons qui se chevauchent', { ...opts, overlapsFound });
+
+    // Aucune maison ne doit empiéter sur une rue
+    const sgrid = new Map();
+    for (const st of city.streetNet || []) {
+      const half = city.streetHalf[st.cls] || 3;
+      for (let k = 0; k + 1 < st.points.length; k++) {
+        const a = st.points[k], b = st.points[k + 1];
+        const key = Math.floor((a[0] + b[0]) / 60) + ',' + Math.floor((a[1] + b[1]) / 60);
+        if (!sgrid.has(key)) sgrid.set(key, []);
+        sgrid.get(key).push([a, b, half]);
+      }
+    }
+    const segDist = (p, a, b) => Geo.distToSegment(p, a, b);
+    let onStreet = 0;
+    for (const h of houses) {
+      const c = Geo.centroid(h), gx = Math.floor(c[0] / 30), gy = Math.floor(c[1] / 30);
+      for (let dx = -2; dx <= 2; dx++) for (let dy = -2; dy <= 2; dy++) for (const [a, b, half] of sgrid.get((gx + dx) + ',' + (gy + dy)) || []) {
+        if (h.some(q => segDist(q, a, b) < half - 0.6) || segDist(c, a, b) < half) { onStreet++; dx = dy = 99; break; }
+      }
+    }
+    if (onStreet) fail('maisons sur une rue', { ...opts, onStreet });
   } catch (e) {
     fail('exception : ' + e.message, opts);
   }
