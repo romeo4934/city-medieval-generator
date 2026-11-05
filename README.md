@@ -64,6 +64,8 @@ The town grew before the factions dug in: the barriers cut through it, so quarte
 
 **Every landmark has a reason to be where it is.** The cathedral is in the old town, facing east. The castle is on the summit, or on the walls near the water. The barracks are near a gate. The port is on the bank downstream, the mill on the river (a windmill otherwise). The cemetery and the monastery are outside the walls. If there is no logical place, the landmark is not placed and the tool says why.
 
+**Not every block is houses.** Behind the houses on the street, block interiors are yards, courtyards and gardens. About one block in ten is a large enclosure: a convent with its church, cloister and kitchen gardens (more often near the walls), a lord's mansion with its courtyard and garden (near the centre), or a college around its quad. And the last wall still encloses open land, as in Paris inside the wall of Charles V: orchards, market gardens, meadows and vineyards that the town never filled.
+
 **Small squares** open at crossroads (like the Weinmarkt in Nuremberg), with their well. **Every quarter has its parish church** (St Brice, St Faith…) in its little churchyard, and named **inns** wait for travellers near the gates and the market.
 
 **Quarters are named after what they are**: Old Town, Tanners' Quarter (downstream, because of the smell), Millers' Quarter, The Quays, Castle Foot, Newtown, North Gate Quarter… You can rename them.

@@ -3,9 +3,9 @@
 
 function drawMonument(b, yard, rand, c, K) {
   const { city, cellEdges, ek, unkey, verts, riverEdgeW } = K;
-  const S = { id: b.id, label: b.label, district: c.district, inner: !!c.inner, yard: [yard], yardColor: 'court', shapes: [] };
+  const S = { id: b.id, label: b.label, minor: !!b.minor, district: c.district, inner: !!c.inner, yard: [yard], yardColor: 'court', shapes: [] };
   const [ctr, ir] = inradius(yard);
-  const label = { at: ctr, text: b.label };
+  const label = { at: ctr, text: b.label, small: !!b.minor };
   const fill = color => ({ fill: color, stroke: 1.1 });
   switch (b.id) {
     case 'temple': {
@@ -75,6 +75,37 @@ function drawMonument(b, yard, rand, c, K) {
       S.yard = [Geo.scale(yard, 0.75)];
       label.at = [ctr[0], ctr[1] + r * 0.9];
       label.italic = true;
+      break;
+    }
+    // Grands enclos (enclosures.js n'existe pas : tout est ici) — repères dans le local de l'enclos
+    case 'couvent': case 'hotel': case 'college': {
+      const u = norm([yard[1][0] - yard[0][0], yard[1][1] - yard[0][1]]), v = [-u[1], u[0]];
+      const L = Math.hypot(yard[1][0] - yard[0][0], yard[1][1] - yard[0][1]), W = Math.hypot(yard[2][0] - yard[1][0], yard[2][1] - yard[1][1]);
+      const at = (x, y) => [ctr[0] + u[0] * x + v[0] * y, ctr[1] + u[1] * x + v[1] * y];
+      const box = (x, y, l, w, ax = u) => rect(at(x, y), ax, l, w);
+      if (b.id === 'couvent') {
+        // Clos du couvent : jardins, église le long d'un côté, cloître carré accolé, potager en planches
+        S.yardColor = 'garden';
+        S.shapes.push({ polys: [yard], fill: 'none', stroke: 1.8, strokeColor: 'buildingLine' });
+        S.shapes.push({ polys: [box(-L * 0.12, -W * 0.3, L * 0.62, W * 0.2)], fill: 'temple', stroke: 1.1 });
+        const q = Math.min(L * 0.3, W * 0.42);
+        S.shapes.push({ polys: [box(-L * 0.2, W * 0.05, q, q), box(-L * 0.2, W * 0.05, q * 0.56, q * 0.56)], fill: 'temple', stroke: 1, evenodd: true });
+        S.shapes.push({ polys: [box(-L * 0.2, W * 0.05, q * 0.56, q * 0.56)], fill: 'green' });
+        S.shapes.push({ lines: [0, 1, 2, 3, 4, 5].map(k => [at(L * 0.12, -W * 0.36 + k * W * 0.13), at(L * 0.42, -W * 0.36 + k * W * 0.13)]), stroke: 0.6 });
+        label.at = at(L * 0.27, W * 0.42);
+      } else if (b.id === 'hotel') {
+        // Hôtel : cour d'honneur sur la rue, corps de logis au fond, deux ailes, jardin derrière
+        S.shapes.push({ polys: [box(0, W * 0.3, L * 0.9, W * 0.36)], fill: 'green' });
+        S.shapes.push({ lines: [[at(-L * 0.35, W * 0.3), at(L * 0.35, W * 0.3)], [at(0, W * 0.15), at(0, W * 0.45)]], stroke: 0.5 });
+        S.shapes.push({ polys: [box(0, W * 0.02, L * 0.78, W * 0.22), box(-L * 0.33, -W * 0.22, L * 0.12, W * 0.32), box(L * 0.33, -W * 0.22, L * 0.12, W * 0.32)], fill: 'noble', stroke: 1.1, outline: true });
+        S.shapes.push({ polys: [yard], fill: 'none', stroke: 1.4, strokeColor: 'buildingLine' });
+        label.at = at(0, -W * 0.3);
+      } else {
+        // Collège : bâtiments autour d'une cour carrée, chapelle à part
+        S.shapes.push({ polys: [box(-L * 0.08, 0, L * 0.7, W * 0.8), box(-L * 0.08, 0, L * 0.44, W * 0.46)], fill: 'school', stroke: 1.1, evenodd: true });
+        S.shapes.push({ polys: [box(L * 0.38, -W * 0.15, L * 0.16, W * 0.5)], fill: 'temple', stroke: 1.1 });
+        label.at = at(0, W * 0.5);
+      }
       break;
     }
     case 'moulin':

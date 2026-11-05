@@ -839,6 +839,30 @@ function generateCity(opts) {
     if (best) best.building = { ...b, label: X.buildings[b.id] }; else missing.push(X.buildings[b.id] + (rule.why ? ' (' + rule.why + ')' : ''));
   }
 
+  // ================= 10b. Grands enclos : couvents, hôtels de seigneurs, collèges =================
+  // Dans une grande ville médiévale, ils occupaient une bonne part du sol (Paris vers 1300) : environ un îlot sur dix.
+  // Les couvents (ordres mendiants) plutôt vers les murs, les hôtels près du centre, les collèges entre les deux.
+  {
+    const rE = rng('enclos|' + opts.size);
+    const nEnc = Math.round(N / 10);
+    const taken = cells.filter(c => c.building || c.type === 'plaza');
+    const conv = X.enclosures.convents.slice(), mans = X.enclosures.mansions.slice(), sts = X.saints.slice();
+    const pool = cells.filter(c => c.inner && !c.citadel && !c.building && c.type !== 'plaza' && !c.steep && !c.terrace && !touchesBorder(c));
+    for (let tries = 0, made = 0; made < nEnc && tries < nEnc * 40 && pool.length; tries++) {
+      const c = pool[Math.floor(rE() * pool.length)];
+      if (c.building || taken.some(o => dist(o.site, c.site) < 2.2 * cellR)) continue;
+      const far = dist(c.site, plaza.site) / R, r = rE();
+      const kind = far > 0.55 ? (r < 0.75 ? 'couvent' : 'hotel') : far > 0.25 ? (r < 0.45 ? 'couvent' : r < 0.8 ? 'hotel' : 'college') : (r < 0.65 ? 'hotel' : 'college');
+      const list = kind === 'couvent' ? conv : kind === 'hotel' ? mans : sts;
+      const pickd = list.splice(Math.floor(rE() * list.length), 1)[0];
+      if (!pickd) continue;
+      const label = kind === 'couvent' ? pickd : kind === 'hotel' ? X.enclosures.mansion(pickd) : X.enclosures.college(pickd);
+      c.building = { id: kind, label, minor: true };
+      taken.push(c);
+      made++;
+    }
+  }
+
   // ================= 11. Quartiers (chacun dans une seule enceinte) =================
   const rD = rng('quartiers|' + opts.size);
   const town = cells.filter(c => c.inner && !c.citadel);
@@ -1018,7 +1042,7 @@ function generateCity(opts) {
   // Chaque enclos est un rectangle à la taille du bâtiment, tourné vers la place (plus de forme de cellule)
   const PRECINCT = { temple: [70, 46], chateau: [64, 64], palais: [52, 40], guildes: [38, 26], universite: [54, 42], caserne: [52, 36],
     prison: [32, 30], hospice: [46, 36], bains: [32, 26], arene: [64, 56], cimetiere: [56, 42], port: [64, 30], monastere: [72, 56],
-    moulin: [26, 26], sanctuaire: [34, 26] };
+    moulin: [26, 26], sanctuaire: [34, 26], couvent: [84, 62], hotel: [46, 36], college: [54, 44] };
   const sizeK = { petite: 0.85, moyenne: 1, grande: 1.08, capitale: 1.15, metropole: 1.2, mega: 1.25 }[opts.size] || 1;
   const precinctOf = new Map();
   for (const c of cells) {
@@ -1207,6 +1231,11 @@ function generateCity(opts) {
   // Les falaises d'un ravin arrêtent les rues (on ne les franchit que par un pont) ; celles d'une colline ont des escaliers
   cliffs.forEach(cl => { for (let i = 0; i + 1 < cl.points.length; i++) addSeg({ a: cl.points[i], b: cl.points[i + 1], half: 2, kind: cl.kind === 'ravine' ? 'wall' : 'cliff' }); });
   // Frontières des factions : murs intérieurs (le long des îlots) et canaux (le long de la frontière)
+  const nearestEdge = (poly, p) => {
+    let best = null, bd = Infinity;
+    poly.forEach((a, i) => { const b = poly[(i + 1) % poly.length], d = Geo.distToSegment(p, a, b); if (d < bd) { bd = d; best = [a, b]; } });
+    return best;
+  };
   // Le canal d'une frontière : seulement en ville, hors des places et monuments
   const runsAlongWater = pts => {
     const runs = [];
@@ -1239,6 +1268,29 @@ function generateCity(opts) {
     }
   }
   oldWalls.filter(w => w.standing).forEach(w => addSeg({ a: verts[w.a], b: verts[w.b], half: 2.5, kind: 'old' }));
+  // Terres ouvertes dans la dernière enceinte : vergers, jardins maraîchers, prés et vignes (comme à Paris
+  // dans l'enceinte de Charles V) — la ville n'a jamais rempli tout ce que ses murs enferment
+  const openLand = [];
+  {
+    const rOL = rng('terres|' + opts.size);
+    const lastRing0 = ringSets.length - 1;
+    const outer = cells.filter(c => c.inner && !c.citadel && !c.building && c.type !== 'plaza' && !c.terrace && !c.steep
+      && (age === 1 ? dist(c.site, plaza.site) > 0.6 * R : c.ring === lastRing0));
+    const target = Math.round(outer.length * (age === 1 ? 0.1 : 0.2));
+    const mainSegs = streets.filter(st => st.cls === 'main' || st.cls === 'road' || st.kind === 'citadel').flatMap(st => st.points.slice(1).map((p, i) => [st.points[i], p]));
+    const cand = outer.map(c => ({ c, s: -dist(c.site, plaza.site) * (0.5 + rOL()) })).sort((a, b) => a.s - b.s);
+    for (const { c } of cand) {
+      if (openLand.length >= target) break;
+      const poly = Geo.inset(c.ids.map(id => verts[id]), 8);
+      if (!poly || poly.length < 3 || Math.abs(Geo.area(poly)) < 700) continue;
+      if (poly.some(q => domainAt(q) !== 'town' || inReserve(q)) || (rivers.length && poly.some(q => riverDist(q) < 12))) continue;
+      if (mainSegs.some(([a, b]) => inPoly(poly, a) || poly.some((q, k) => segHit(q, poly[(k + 1) % poly.length], a, b)))) continue;
+      const land = slopeAt(Geo.centroid(poly)) > 9 ? 'vines' : ['orchard', 'orchard', 'garden', 'garden', 'meadow'][Math.floor(rOL() * 5)];
+      const res = { poly, kind: 'open', frontage: false, land };
+      reserves.push(res);
+      openLand.push(res);
+    }
+  }
   reserves.forEach(r => r.poly.forEach((p, i) => addSeg({ a: p, b: r.poly[(i + 1) % r.poly.length], half: 0.5, kind: 'reserve', reserve: r })));
 
   const rS2 = rng('reseau|' + opts.size);
@@ -1628,7 +1680,7 @@ function generateCity(opts) {
     return [best, what];
   };
 
-  const TREES = { vieille: 0.05, bourg: 0.25, neuf: 0.45, faubourg: 0.5, citadelle: 0.15 };
+  const TREES = { vieille: 0.08, bourg: 0.4, neuf: 0.75, faubourg: 0.5, citadelle: 0.2 };
   const mainHouses = [];
   let people = 0;
   // Une rangée de lots le long d'une ligne (bord de rue ou bord de place), d'un côté
@@ -1667,7 +1719,7 @@ function generateCity(opts) {
       const [reach, what] = reachAlong([Fm[0] + n[0] * 0.2, Fm[1] + n[1] * 0.2], n, 70);
       const lotDepth = Math.min(what === 'street' ? reach / 2 : reach - 1, 42);
       if (lotDepth < 5) continue;
-      const skip = (alley ? 0.45 : opt.suburb ? 0.35 : zone === 'neuf' ? 0.08 : 0.03) + (onSlope ? 0.3 : 0);
+      const skip = (alley ? 0.45 : opt.suburb ? 0.35 : zone === 'neuf' ? 0.16 : zone === 'bourg' ? 0.06 : 0.03) + (onSlope ? 0.3 : 0);
       if (rand() < skip) { city.fences.push([F0, F1]); continue; }
       let d = Math.min(rowDepth * between(rand, [0.85, 1.15]) * (onSlope ? 0.7 : 1), lotDepth * 0.85);
       let house = null;
@@ -1852,6 +1904,19 @@ function generateCity(opts) {
   nameCity({ X, nInns: want.inns, rng, opts, city, streets, bastide, twin, wanted, churchSpots, districts, zoneOf, cellAt, altitude, baseAlt, reliefHeight, rivers, riverDist, cellR, squares, cliffSegs: stairSegs, oldWalls, verts, domainAt, mainHouses, plaza, gates, edgeCells, cells, wall, wallEdges, ek, dist });
 
   // ================= 15b. Factions : territoires, frontières, passages ; l'esplanade du maire =================
+  // Terres ouvertes : un verger a ses arbres en rangs, un pré quelques arbres isolés
+  city.openLand = openLand.map(r => {
+    const rand = rng('terre|' + Math.round(r.poly[0][0]) + ',' + Math.round(r.poly[0][1]));
+    const trees = [];
+    if (r.land === 'orchard' || r.land === 'meadow') {
+      const xs = r.poly.map(p => p[0]), ys = r.poly.map(p => p[1]), sp = r.land === 'orchard' ? 9 : 22;
+      for (let y = Math.min(...ys) + 4; y < Math.max(...ys); y += sp) for (let x = Math.min(...xs) + 4; x < Math.max(...xs); x += sp) {
+        const p = [x + (rand() - 0.5) * (r.land === 'orchard' ? 1.5 : 12), y + (rand() - 0.5) * (r.land === 'orchard' ? 1.5 : 12)];
+        if (inPoly(r.poly, p) && Geo.distToSegment(p, ...nearestEdge(r.poly, p)) > 3 && (r.land === 'orchard' || rand() < 0.5)) trees.push([p[0], p[1], r.land === 'orchard' ? 2.6 : 3.5 + rand() * 1.5]);
+      }
+    }
+    return { poly: r.poly, land: r.land, trees };
+  });
   city.factions = [];
   city.factionCount = F.K;
   city.innerWalls = innerWalls.map(w => [w.a, w.b]);

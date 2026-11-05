@@ -57,6 +57,27 @@ const TEXT = {
     labels: { market: 'Market', citadel: 'Citadel', upperTown: 'Upper Town', hill: 'Hill' },
     buildings: { temple: 'Cathedral', chateau: 'Castle', palais: 'Palace', guildes: 'Guildhall', universite: 'University', caserne: 'Barracks', prison: 'Prison',
       hospice: 'Hospice', bains: 'Public Baths', arene: 'Arena', cimetiere: 'Cemetery', port: 'Port', monastere: 'Monastery', moulin: 'Mill', esplanade: "Mayor's Esplanade" },
+    // Endless names (for big cities): a word and a kind of street / square, never twice the same
+    words: ['Well', 'Moon', 'Pelican', 'Bear', 'Swan', 'Mint', 'Harp', 'Helm', 'Key', 'Dolphin', 'Herb', 'Apple', 'Pear', 'Cherry', 'Plum', 'Bell', 'Crown', 'Mitre',
+      'Anchor', 'Lamb', 'Ram', 'Goat', 'Hart', 'Hind', 'Fox', 'Hare', 'Wren', 'Lark', 'Rook', 'Crow', 'Owl', 'Heron', 'Cock', 'Hen', 'Pig', 'Ox', 'Horse', 'Saddle',
+      'Bridle', 'Spur', 'Lance', 'Shield', 'Sword', 'Arrow', 'Bow', 'Candle', 'Lantern', 'Oven', 'Bread', 'Flour', 'Salt', 'Wool', 'Linen', 'Silk', 'Cloth', 'Leather',
+      'Tallow', 'Copper', 'Tin', 'Iron', 'Lead', 'Silver', 'Gold', 'Glass', 'Clay', 'Brick', 'Stone', 'Timber', 'Rope', 'Barrel', 'Cart', 'Wheel', 'Fish', 'Eel',
+      'Oyster', 'Herring', 'Cheese', 'Butter', 'Honey', 'Wax', 'Ink', 'Quill', 'Book', 'Chain', 'Needle', 'Thimble', 'Comb', 'Hat', 'Glove', 'Shoe', 'Boot', 'Cloak',
+      'Mask', 'Drum', 'Fiddle', 'Lute', 'Dice', 'Thorn', 'Rose', 'Lily', 'Vine', 'Oak', 'Ash', 'Elm', 'Willow', 'Hazel', 'Raven', 'Wolf', 'Boar', 'Stag', 'Unicorn'],
+    streetKinds: { rue: ['Street', 'Lane', 'Row', 'Walk'], ruelle: ['Alley', 'Passage', 'Wynd', 'Ginnel'], impasse: ['Close', 'Yard', 'Court'] },
+    streetMods: ['', '', 'Little ', 'Upper ', 'Lower ', 'Old ', 'New ', 'Back '],
+    squareKinds: ['Square', 'Market', 'Cross', 'Green', 'Yard'],
+    nameOf: (mod, word, kind) => `${mod}${word} ${kind}`,
+    pair: (a, b) => `${a} and ${b}`,
+    enclosures: {
+      convents: ['Greyfriars', 'Blackfriars', 'Whitefriars', 'Austin Friars', 'Poor Clares', 'Crutched Friars', 'The Charterhouse', 'The Minoresses', 'Penitent Sisters',
+        'Friars of the Sack', 'Pied Friars', "Templars' House", "Hospitallers' House", 'Beguine Court', "St Anthony's Priory", 'Holy Trinity Priory', 'Bonhommes', 'Cistercian Grange'],
+      mansions: ['Ashby', 'Beaumont', 'Clare', 'Despenser', 'Fitzwalter', 'Grey', 'Hastings', 'Lacy', 'Mortimer', 'Neville', 'Percy', 'Scrope', 'Talbot', 'Vere', 'Warenne',
+        'Mowbray', 'Stafford', 'Courtenay', 'Montagu', 'Bohun', 'Arundel', 'Clifford'],
+      mansion: f => `${f} House`, college: s => `${s} College`, conventFallback: k => `Convent no. ${k}`,
+      kinds: { couvent: 'convent', hotel: 'mansion', college: 'college' },
+    },
+    openLand: { orchard: 'orchard', garden: 'market garden', meadow: 'meadow', vines: 'vineyard' },
     factions: {
       names: ['The Loyalists', "The Assassins' Guild", 'The Theatre Folk', 'The Merchant Houses', "The Purifier's Flock", 'The Grey Hoods', 'The Iron Brotherhood',
         'The House of the Raven', 'The Salt Guild', 'The Black Lanterns', 'The Bell Ringers', 'The Old Families'],
@@ -125,6 +146,30 @@ const TEXT = {
     labels: { market: 'Marché', citadel: 'Citadelle', upperTown: 'Ville Haute', hill: 'Colline' },
     buildings: { temple: 'Cathédrale', chateau: 'Château', palais: 'Palais', guildes: 'Halle des guildes', universite: 'Université', caserne: 'Caserne', prison: 'Prison',
       hospice: 'Hospice', bains: 'Bains publics', arene: 'Arène', cimetiere: 'Cimetière', port: 'Port', monastere: 'Monastère', moulin: 'Moulin', esplanade: 'Esplanade du Maire' },
+    words: ['du Puits', 'de la Lune', 'du Pélican', "de l'Ours", 'du Cygne', 'de la Monnaie', 'de la Harpe', 'du Heaume', 'de la Clef', 'du Dauphin', 'des Herbes',
+      'des Pommes', 'des Poires', 'des Cerises', 'des Prunes', 'de la Cloche', 'de la Couronne', 'de la Mitre', "de l'Ancre", "de l'Agneau", 'du Bélier', 'de la Chèvre',
+      'du Cerf', 'de la Biche', 'du Renard', 'du Lièvre', "de l'Alouette", 'des Corbeaux', 'de la Chouette', 'du Héron', 'du Coq', 'des Poules', 'du Porc', 'du Bœuf',
+      'du Cheval', 'de la Selle', 'des Éperons', 'de la Lance', "de l'Écu", "de l'Épée", 'de la Flèche', "de l'Arc", 'de la Chandelle', 'de la Lanterne', 'du Four',
+      'du Pain', 'de la Farine', 'du Sel', 'de la Laine', 'du Lin', 'de la Soie', 'du Drap', 'du Cuir', 'du Suif', 'du Cuivre', "de l'Étain", 'du Fer', 'du Plomb',
+      "de l'Argent", "de l'Or", 'du Verre', "de l'Argile", 'de la Brique', 'de la Pierre', 'des Poutres', 'de la Corde', 'du Tonneau', 'de la Charrette', 'de la Roue',
+      'du Poisson', 'des Anguilles', 'des Huîtres', 'du Hareng', 'du Fromage', 'du Beurre', 'du Miel', 'de la Cire', "de l'Encre", 'de la Plume', 'du Livre',
+      'de la Chaîne', "de l'Aiguille", 'du Dé', 'du Peigne', 'du Chapeau', 'du Gant', 'du Soulier', 'de la Botte', 'du Manteau', 'du Masque', 'du Tambour', 'de la Vielle',
+      'du Luth', 'des Dés', "de l'Épine", 'de la Rose', 'du Lys', 'de la Vigne', 'du Chêne', 'du Frêne', "de l'Orme", 'du Saule', 'du Noisetier', 'du Loup', 'du Sanglier', 'de la Licorne'],
+    streetKinds: { rue: ['Rue', 'Petite rue', 'Rue Neuve', 'Rue Haute', 'Rue Basse', 'Vieille rue'], ruelle: ['Ruelle', 'Passage', 'Venelle', 'Traverse', 'Petite ruelle', 'Vieille ruelle'], impasse: ['Impasse', 'Cour', 'Cul-de-sac', 'Petite impasse', 'Vieille cour'] },
+    streetMods: [''],
+    squareKinds: ['Place', 'Carrefour', 'Marché', 'Placette'],
+    nameOf: (mod, word, kind) => `${kind} ${word}`,
+    pair: (a, b) => `${a} et ${b.replace(/^d(u|e la|e l'|es) /, m => m)}`,
+    enclosures: {
+      convents: ['Couvent des Cordeliers', 'Couvent des Jacobins', 'Couvent des Carmes', 'Couvent des Augustins', 'Couvent des Clarisses', 'Couvent des Célestins',
+        'Couvent des Mathurins', 'Couvent des Blancs-Manteaux', 'Chartreuse', 'Couvent des Minimes', 'Les Filles-Dieu', 'Béguinage', 'Commanderie du Temple',
+        'Prieuré Saint-Martin', 'Abbaye Saint-Victor', 'Couvent des Pénitentes', 'Couvent des Billettes', 'Grange des Cisterciens'],
+      mansions: ['Sens', 'Cluny', 'Bourbon', 'Nesle', 'Flandre', 'Artois', 'Navarre', 'Clisson', 'Rohan', 'Soubise', 'Bourgogne', 'Anjou', 'Berry', 'Alençon', 'Beauvais',
+        'Laval', 'Coucy', 'Montmorency', 'Craon', 'Harcourt', 'Tancarville', 'Melun'],
+      mansion: f => `Hôtel de ${f}`.replace('de A', "d'A").replace('de É', "d'É"), college: s => `Collège ${s}`, conventFallback: k => `Couvent n° ${k}`,
+      kinds: { couvent: 'couvent', hotel: 'hôtel', college: 'collège' },
+    },
+    openLand: { orchard: 'verger', garden: 'jardin maraîcher', meadow: 'pré', vines: 'vigne' },
     factions: {
       names: ['Les Loyalistes', 'La Guilde des Assassins', 'Les Gens du Théâtre', 'Les Maisons Marchandes', 'Le Troupeau du Purificateur', 'Les Capuches Grises',
         'La Confrérie de Fer', 'La Maison du Corbeau', 'La Guilde du Sel', 'Les Lanternes Noires', 'Les Sonneurs', 'Les Vieilles Familles'],
@@ -143,6 +188,18 @@ const TEXT = {
 };
 
 const textFor = lang => TEXT[lang === 'fr' ? 'fr' : 'en'];
+
+// Endless names for streets and squares: a word and a kind, never twice the same (for big cities)
+function makeNamer(rand, T, used) {
+  const pick = l => l[Math.floor(rand() * l.length)];
+  const tryName = make => { for (let k = 0; k < 60; k++) { const v = make(); if (!used.has(v)) { used.add(v); return v; } } return null; };
+  return {
+    street: kind => tryName(() => T.nameOf(pick(T.streetMods), pick(T.words), pick(T.streetKinds[kind] || T.streetKinds.rue)))
+      // Very big cities: two signs on the same street ("Bell and Crown Alley")
+      || tryName(() => T.nameOf('', T.pair(pick(T.words), pick(T.words)), pick(T.streetKinds[kind] || T.streetKinds.rue))),
+    square: () => tryName(() => T.nameOf('', pick(T.words), pick(T.squareKinds))),
+  };
+}
 
 // A town name from two syllables / un nom de ville en deux syllabes
 function townName(rand, T) {

@@ -14,6 +14,7 @@ function nameCity(K) {
       return v;
     };
     const claim = v => (usedNames.has(v) ? null : (usedNames.add(v), v));
+    const namer = makeNamer(rng('noms-sans-fin|' + opts.size), X, usedNames);   // quand les listes sont épuisées
     const gateText = gi => (city.gateNames[gi] ? city.gateNames[gi].text : X.gate(X.compass[0]));
     const label = (name, pts, cls) => city.streetLabels.push({ name, points: pts, cls });
 
@@ -59,8 +60,8 @@ function nameCity(K) {
         const c = st.coarse || cellAt(st.points[Math.floor(st.points.length / 2)]), d = districts[c.district], zone = zoneOf(c);
         const L = polyLen(st.points);
         let name = null;
-        if (st.deadEnd) name = pickFrom(X.streets.deadEnds) || X.streets.deadEndFallback(city.streets.length + 1);
-        else if (st.cls === 'ruelle') name = pickFrom(X.streets.alleys) || X.streets.alleyFallback(city.streets.length + 1);
+        if (st.deadEnd) name = pickFrom(X.streets.deadEnds) || namer.street('impasse') || X.streets.deadEndFallback(city.streets.length + 1);
+        else if (st.cls === 'ruelle') name = pickFrom(X.streets.alleys) || namer.street('ruelle') || X.streets.alleyFallback(city.streets.length + 1);
         else {
           const trade = d && X.tradeStreet(d.name);
           const church = churchSpots.find(ch => ch.district === c.district);
@@ -71,7 +72,7 @@ function nameCity(K) {
           if (altitude(...st.points[0]) - baseAlt > reliefHeight * 0.35) options.push(X.streets.upper);
           if (rivers.length && riverDist(st.points[0]) < cellR) options.push(X.streets.lower);
           for (const o of options) if (rNm() < 0.6 && (name = claim(o))) break;
-          if (!name) name = pickFrom(X.streets.names) || X.streets.fallback(city.streets.length + 1);
+          if (!name) name = pickFrom(X.streets.names) || namer.street('rue') || X.streets.fallback(city.streets.length + 1);
         }
         city.streets.push({ name, kind: st.deadEnd ? 'impasse' : st.cls, length: Math.round(L), detail: d ? d.name : '' });
         if (L > (st.cls === 'rue' ? 45 : 32)) label(name, st.points, st.cls);
@@ -88,7 +89,7 @@ function nameCity(K) {
       if (zoneOf(c) === 'vieille') o2.push(X.squares.pillory, X.squares.cross);
       let name = null;
       for (const o of o2) if ((name = claim(o))) break;
-      if (!name) name = pickFrom(X.squares.names) || X.squares.fallback;
+      if (!name) name = pickFrom(X.squares.names) || namer.square() || X.squares.fallback;
       city.squares.push({ name, at: sq.at, district: c.district });
     }
 

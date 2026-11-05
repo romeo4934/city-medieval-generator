@@ -141,7 +141,7 @@ function citySheetEn(city) {
   city.districts.forEach((d, k) => {
     const flavour = (DISTRICT_FLAVOUR_EN.find(([re]) => re.test(d.name)) || [null, d.zone === 'neuf' ? 'a recent quarter with wide plots and many gardens' : 'an ordinary quarter of homes, shops and workshops mixed together'])[1];
     const places = [
-      ...city.specials.filter(x => x.district === k && x.inner !== false).map(x => 'the ' + x.label),
+      ...city.specials.filter(x => x.district === k && x.inner !== false).map(x => (/^The /.test(x.label) ? x.label : 'the ' + x.label)),
       ...city.churches.filter(c => c.district === k).map(c => `the church of ${c.name}`),
       ...city.inns.filter(i => i.district === k).map(i => `the inn “${i.name}”`),
     ];

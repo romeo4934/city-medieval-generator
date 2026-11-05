@@ -28,7 +28,9 @@ const DISTRICT_FLAVOUR = [
 const ARTICLES = { 'Cathédrale': 'la cathédrale', 'Château': 'le château', 'Palais': 'le palais', 'Halle des guildes': 'la halle des guildes',
   'Université': "l'université", 'Caserne': 'la caserne', 'Prison': 'la prison', 'Hospice': "l'hospice", 'Bains publics': 'les bains publics',
   'Arène': "l'arène", 'Cimetière': 'le cimetière', 'Port': 'le port', 'Monastère': 'le monastère', 'Moulin': 'le moulin' };
-const withArticle = label => ARTICLES[label] || 'le sanctuaire du ' + label;
+const withArticle = label => ARTICLES[label]
+  || (/^(Couvent|Prieuré|Béguinage|Collège)/.test(label) ? 'le ' + label : /^(Chartreuse|Commanderie|Abbaye|Grange)/.test(label) ? 'la ' + label
+    : /^Hôtel/.test(label) ? "l'" + label : /^(Les|La|Le) /.test(label) ? label : 'le sanctuaire du ' + label);
 
 const ZONE_TEXT = {
   vieille: 'dans la première enceinte',

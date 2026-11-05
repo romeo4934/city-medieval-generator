@@ -31,9 +31,9 @@ const COLORS = {
   green: '#cdd8ad',
   street: '#f7f4ec',
   roadEdge: '#bdb29b',
-  court: '#e4ddcd',
-  yard: '#e2dcc6',
-  garden: '#dcdcbf',
+  court: '#ddd3bd',
+  yard: '#dbd8b8',
+  garden: '#cdd6a6',
   citadel: '#dcd6ca',
   castleYard: '#d3cec4',
   quay: '#d9d6cb',
@@ -298,7 +298,7 @@ function renderSVG(city, options = {}) {
     .leg{font-size:${n1(fs * 0.85)}px;fill:${COLORS.ink};dominant-baseline:middle}
     .fac{font-size:${z(fs * 1.7)};font-weight:bold;font-variant:small-caps;text-anchor:middle;dominant-baseline:middle;paint-order:stroke;stroke:#fffaf0;stroke-width:${z(fs / 2.5)};stroke-linejoin:round;letter-spacing:.06em}
   </style>`);
-  out.push(`<defs><pattern id="cmg-vines" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><rect width="7" height="7" fill="${COLORS.vine}"/><circle cx="3.5" cy="3.5" r="1.1" fill="${COLORS.vineDot}"/></pattern></defs>`);
+  out.push(`<defs><pattern id="cmg-vines" width="7" height="7" patternUnits="userSpaceOnUse" patternTransform="rotate(30)"><rect width="7" height="7" fill="${COLORS.vine}"/><circle cx="3.5" cy="3.5" r="1.1" fill="${COLORS.vineDot}"/></pattern><pattern id="cmg-beds" width="6" height="6" patternUnits="userSpaceOnUse" patternTransform="rotate(${Math.round((city.seed.length * 37) % 180)})"><rect width="6" height="6" fill="${COLORS.garden}"/><rect width="6" height="1.6" fill="#b8c48c"/></pattern></defs>`);
 
   // Sol, champs, prés, vignes
   out.push(`<rect x="${n1(-E)}" y="${n1(-E)}" width="${n1(2 * E)}" height="${n1(2 * E)}" fill="${COLORS.land}"/>`);
@@ -346,6 +346,12 @@ function renderSVG(city, options = {}) {
   // Sol de la ville (cœurs d'îlots), puis cours et jardins des parcelles
   fill([city.wall], 'townGround');
   if (city.citadel) fill([city.citadel.edges.map(e => e[0])], 'townGround');
+  // Terres ouvertes dans les murs : vergers, jardins maraîchers (planches), prés, vignes ; une clôture autour
+  for (const o of city.openLand || []) {
+    const f = { orchard: COLORS.garden, garden: COLORS.garden, meadow: COLORS.field1, vines: 'url(#cmg-vines)' }[o.land];
+    out.push(`<path d="${pathD([o.poly])}" fill="${o.land === 'garden' ? 'url(#cmg-beds)' : f}" stroke="${COLORS.fence}" stroke-width="1" stroke-dasharray="3 2"/>`);
+    if (o.trees.length) out.push(`<path d="${o.trees.map(([x, y, r]) => `M${n1(x - r)} ${n1(y)}a${n1(r)} ${n1(r)} 0 1 0 ${n1(2 * r)} 0a${n1(r)} ${n1(r)} 0 1 0 ${n1(-2 * r)} 0`).join('')}" fill="${COLORS.tree}" stroke="${COLORS.treeLine}" stroke-width="0.7"/>`);
+  }
   fill(city.ground.court, 'court');
   fill(city.ground.yard, 'yard');
   fill(city.ground.garden, 'garden');
@@ -639,7 +645,7 @@ function renderSVG(city, options = {}) {
     out.push(`<text class="fac" x="${n1(p[0])}" y="${n1(p[1])}" fill="#5b4f3d" style="font-size:${z(fs * 1.4)}">${esc(city.centre.name)}</text>`);
   }
   if (city.esplanade) textAt('lbl', fs, { at: [city.esplanade.c[0], city.esplanade.c[1]], text: city.esplanade.name }, true);
-  for (const l of city.labels) textAt(l.italic ? 'qtr' : 'lbl', l.italic ? fs * 1.15 : fs, l, true);
+  for (const l of city.labels) textAt(l.italic ? 'qtr' : l.small ? 'small' : 'lbl', l.italic ? fs * 1.15 : l.small ? fs * 0.68 : fs, l, !l.small);
   for (const d of city.districts) textAt('qtr', fs * 1.15, { at: d.at, text: d.name }, true);
   for (const g of city.gateNames) textAt('gate', fs * 0.8, g, true);
   for (const sq of city.squares) textAt('small', fs * 0.68, { at: [sq.at[0], sq.at[1] + fs * 0.9], text: sq.name }, false);
