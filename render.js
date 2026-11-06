@@ -200,7 +200,11 @@ function renderTerrainView(city, view) {
   else out.push(`<rect x="${n1(-E)}" y="${n1(-E)}" width="${n1(2 * E)}" height="${n1(2 * E)}" fill="${COLORS.land}"/>`);
 
   // Eau
-  if (city.moat && city.moat.water) out.push(`<path d="${pathD([city.wall])}" fill="none" stroke="${COLORS.water}" stroke-width="${n1(2 * city.moat.outer)}" stroke-opacity=".6" stroke-linejoin="round"/>`);
+  // Fossé : en eau seulement sur les tronçons bas du rempart (l'eau ne monte pas une colline), comme sur le plan
+  if (city.moat && city.moat.water) {
+    const wet = (city.moat.segs || []).filter(sg => sg.water);
+    if (wet.length) out.push(`<path d="${wet.map(sg => lineD([sg.a, sg.b])).join('')}" fill="none" stroke="${COLORS.water}" stroke-width="${n1(2 * city.moat.outer)}" stroke-opacity=".6" stroke-linecap="round" stroke-linejoin="round"/>`);
+  }
   city.rivers.forEach(rv => out.push(`<path d="${lineD(rv.points)}" fill="none" stroke="${COLORS.water}" stroke-width="${n1(rv.w)}" stroke-linecap="round" stroke-linejoin="round"/>`));
 
   // Courbes de niveau
