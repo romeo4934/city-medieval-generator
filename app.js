@@ -68,6 +68,7 @@ function normalize(o) {
     plan: ['organique', 'bastide', 'auto'].includes(o.plan) ? o.plan : 'organique',
     walls: ['simple', 'double', 'auto'].includes(o.walls) ? o.walls : 'simple',
     twin: ['non', 'oui', 'auto'].includes(o.twin) ? o.twin : 'non',
+    citadel: ['oui', 'non', 'auto'].includes(o.citadel) ? o.citadel : 'oui',
     ledges: ['auto', 'oui', 'non'].includes(o.ledges) ? o.ledges : 'auto',
     ...Object.fromEntries(COUNTS.map(([k, , lo, hi]) => [k, toCount(o[k], lo, hi)])),
     hillType: ['auto', 'butte', 'crete', 'eperon', 'table', 'dissymetrique'].includes(o.hillType) ? o.hillType : 'auto',
@@ -98,6 +99,7 @@ function readHash() {
     plan: p.get('plan'),
     walls: p.get('enceinte'),
     twin: p.get('haute'),
+    citadel: p.get('citadelle'),
     ledges: p.get('ressauts'),
     ...Object.fromEntries(COUNTS.map(([k, h]) => [k, p.get(h)])),
     hillType: p.get('forme'),
@@ -113,7 +115,7 @@ function readHash() {
 
 function writeHash(o) {
   const p = new URLSearchParams({
-    graine: o.seed, taille: o.size, relief: o.relief, plan: o.plan, enceinte: o.walls, haute: o.twin, forme: o.hillType, vallee: o.valleyType, bat: o.buildings.join(','),
+    graine: o.seed, taille: o.size, relief: o.relief, plan: o.plan, enceinte: o.walls, haute: o.twin, citadelle: o.citadel, forme: o.hillType, vallee: o.valleyType, bat: o.buildings.join(','),
   });
   if (o.cityName) p.set('nom', o.cityName);
   for (const [k, h] of COUNTS) if (o[k] !== null && o[k] !== undefined) p.set(h, o[k]);
@@ -135,6 +137,7 @@ function fromControls() {
     plan: $('plan').value,
     walls: $('walls').value,
     twin: $('twin').value,
+    citadel: $('citadel').value,
     ...Object.fromEntries(COUNTS.map(([k]) => [k, $(k).value === '' ? null : $(k).value])),
     river: 'auto', age: 'auto', ledges: 'auto',   // remplacés par les quantités
     hillType: $('hillType').value,
@@ -169,6 +172,7 @@ function build(o) {
   $('plan').value = opts.plan;
   $('walls').value = opts.walls;
   $('twin').value = opts.twin;
+  $('citadel').value = opts.citadel;
   for (const [k] of COUNTS) $(k).value = opts[k] === null ? '' : opts[k];
   $('hillType').value = opts.hillType;
   $('valleyType').value = opts.valleyType;
@@ -567,7 +571,7 @@ $('random').onclick = () => { view = null; build({ ...fromControls(), seed: rand
 $('apply').onclick = () => build(fromControls());
 $('seed').onkeydown = e => { if (e.key === 'Enter') { view = null; build({ ...fromControls(), names: [], cityName: '' }); } };
 $('size').onchange = () => build({ ...fromControls(), names: [] });
-$('relief').onchange = $('plan').onchange = $('walls').onchange = $('twin').onchange = $('hillType').onchange = $('valleyType').onchange = () => build(fromControls());
+$('relief').onchange = $('plan').onchange = $('walls').onchange = $('twin').onchange = $('citadel').onchange = $('hillType').onchange = $('valleyType').onchange = () => build(fromControls());
 for (const [k] of COUNTS) $(k).onchange = () => build(fromControls());
 $('buildings').addEventListener('change', () => build(fromControls()));
 

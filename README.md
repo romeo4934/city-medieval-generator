@@ -82,7 +82,7 @@ On about half the borders, **waste ground** lines both sides of the wall: a no m
 
 - **Size**: from small town (~2,000 people) to great city (~50,000) and mega city (~150,000–200,000, like Paris around 1300; it takes 8–20 s to generate).
 - **Factions**: number of factions (empty or 0 = none); click a name to rename it, the last one being the mayor's quarter.
-- **Hills**: number of hills (0–10), cliff steps per hill (0–3, the terraces), shape of the main hill and of the valley.
+- **Hills**: number of hills (0–10), cliff steps per hill (0–3, the terraces), shape of the main hill and of the valley, and whether the main hill carries a **citadel** (yes, no, random).
 - **How many?**: rivers (0–3), gates, walls, quarters, small squares, churches, inns, islands, mill races, and forest in %. Empty = random. If there is no room (an island on a river too short inside the town…), the tool says so.
 - **Seed**: same seed + same settings = same city. Adding a river or a landmark does not move everything else.
 - **Zoom**: mouse wheel, double-click (Shift + double-click to zoom out), + / − / ⤢ buttons, drag to move.

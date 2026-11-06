@@ -668,8 +668,10 @@ function generateCity(opts) {
   }
 
   // ================= 7. Citadelle sur le sommet =================
-  let citadelSet = new Set(cells.filter(c => (c.top || (twin && !c.steep && hillHeight(0, ...c.site) > 0.6)) && !touchesBorder(c)).map(c => c.index));
-  if (hilly && !citadelSet.size) {
+  // Citadelle : oui (s'il y a une colline), non, ou au hasard ; une ville haute (Provins) en a toujours une
+  const citadelWanted = twin || opts.citadel === 'oui' || !opts.citadel || (opts.citadel === 'auto' && rng('citadelle')() < 0.6);
+  let citadelSet = citadelWanted ? new Set(cells.filter(c => (c.top || (twin && !c.steep && hillHeight(0, ...c.site) > 0.6)) && !touchesBorder(c)).map(c => c.index)) : new Set();
+  if (hilly && citadelWanted && !citadelSet.size) {
     const highest = cells.filter(c => !touchesBorder(c) && c.type !== 'plaza').reduce((m, c) => (!m || c.elev > m.elev ? c : m), null);
     if (highest && highest.elev > 0.6) citadelSet = new Set([highest.index]);
   }

@@ -30,6 +30,7 @@ function optionsFor(i) {
     lang: i % 2 ? 'fr' : 'en',
     nHills: i % 11 === 5 ? 10 : i % 11 === 6 ? 6 : null, nLedges: i % 13 === 4 ? 3 : null, nFactions: i % 3 === 1 ? 2 + (i % 7) : null,
     terrainEdits: i % 6 === 2 ? [{ t: 'r', x: 60, y: -40, r: 90, a: 8, g: 1 }, { t: 'l', x: -80, y: 30, r: 70, a: 5, g: 2 }, { t: 's', x: 0, y: 0, r: 120, a: 4, g: 3 }] : [],
+    citadel: i % 4 === 1 ? 'non' : i % 4 === 3 ? 'auto' : 'oui',
     userRivers: i % 9 === 4 ? [[[-300, -50], [0, 20], [250, 120]]] : null,
     buildings: i % 3 ? ['temple', 'chateau', 'palais', 'guildes', 'universite', 'caserne', 'prison', 'hospice', 'bains', 'arene', 'cimetiere', 'port', 'monastere', 'moulin'] : ['temple', 'chateau'],
   };
