@@ -137,7 +137,7 @@ function generateCity(opts) {
     : reliefRoll < 0.28 ? 'plaine' : reliefRoll < 0.6 ? 'colline' : reliefRoll < 0.78 ? 'collines' : 'vallee';
   const hilly = relief === 'colline' || relief === 'collines';
   const ph = Array.from({ length: 8 }, () => rT() * Math.PI * 2);
-  const hAng = rT() * Math.PI * 2, hDist = (0.45 + rT() * 0.35) * R;
+  const hAng = rT() * Math.PI * 2, hDist = (0.28 + rT() * 0.3) * R;   // la colline principale est dans la ville
   const hill = { c: [Math.cos(hAng) * hDist, Math.sin(hAng) * hDist], r0: (0.16 + rT() * 0.08) * R, band: (0.2 + rT() * 0.08) * R };
   const vAng = rT() * Math.PI, vOff = (rT() - 0.5) * 0.3 * R;
   const valley = { dir: [Math.cos(vAng), Math.sin(vAng)], off: vOff, a: (1.0 + rT() * 0.15) * R, band: 0.4 * R };
@@ -201,7 +201,7 @@ function generateCity(opts) {
     // Beaucoup de collines (jusqu'à 10, comme Rome ou Lisbonne) : chacune est plus petite pour qu'elles tiennent
     const shrink = Math.sqrt(4 / Math.max(4, wantHills + 1));
     for (let tries = 0; hills.length < wantHills + 1 && tries < 150 * (wantHills + 1); tries++) {
-      const a = rH() * Math.PI * 2, d = (0.35 + rH() * (wantHills > 4 ? 1.1 : 0.9)) * R;
+      const a = rH() * Math.PI * 2, d = (0.2 + rH() * (wantHills > 4 ? 0.5 : 0.42)) * R;   // dans la ville, pas dans les champs
       const hl = { c: [Math.cos(a) * d, Math.sin(a) * d], r0: (0.08 + rH() * 0.06) * R * shrink, band: (0.15 + rH() * 0.08) * R * shrink, h: 0.4 + rH() * 0.5, ph: rH() * 6.28 };
       shapeHill(hl, rH, ['butte', 'crete', 'dissymetrique', 'table'][Math.floor(rH() * 4)]);
       if (Math.max(Math.abs(hl.c[0]), Math.abs(hl.c[1])) > E - reach(hl)) continue;
@@ -542,7 +542,8 @@ function generateCity(opts) {
     .reduce((m, c) => {
       // Avec l'esplanade, le marché est au pied de sa falaise : la foule écoute d'en bas
       const foot = T0 && !F.K ? T0.foot : null;   // sans factions, le marché est la place de la foule
-      const s = c2 => (foot ? dist(c2.site, foot) : Math.hypot(...c2.site) + (rivers.length ? 0.6 * Math.max(0, riverDist(c2.site) - cellR) : 0));
+      // Le marché : près du centre, mais en bas (pas sur une colline), près d'un gué s'il y a une rivière
+      const s = c2 => (foot ? dist(c2.site, foot) : Math.hypot(...c2.site) + (rivers.length ? 0.6 * Math.max(0, riverDist(c2.site) - cellR) : 0) + (hilly ? Math.max(0, c2.elev) * 0.45 * R + Math.max(0, Math.hypot(...c2.site) - 0.45 * R) * 3 : 0));
       return !m || s(c) < s(m) ? c : m;
     }, null) || cells[0];
   plaza.type = 'plaza';
@@ -587,7 +588,7 @@ function generateCity(opts) {
     for (const c of byGrowth) {
       if (flatCount >= n) break;
       set.add(c.index);
-      if (!c.steepBase && !c.top) flatCount++;
+      flatCount += !c.steepBase && !c.top ? 1 : 0.5;   // une pente compte pour moitié : vignes et jardins font aussi la ville
     }
     return fillHoles(set);
   };
@@ -617,7 +618,16 @@ function generateCity(opts) {
     for (const ci of [...set]) if (onUpperHill(cells[ci])) set.delete(ci);
     return set;
   };
-  const ringSets = fractions.map(f => withoutHill(convexify(takeFlat(Math.max(2, Math.round(N * f))))));
+  // La dernière enceinte enferme les collines de la ville : leurs pentes restent dedans (vignes, jardins), comme à Rome
+  const withHills = set => {
+    if (!hilly) return set;
+    hills.forEach((hl, k) => {
+      if (Math.hypot(hl.c[0], hl.c[1]) > 0.95 * R) return;
+      for (const c of cells) if (!touchesBorder(c) && Math.hypot(...c.site) < 1.1 * R && hillHeight(k, ...c.site) > 0.5 * hl.h) set.add(c.index);
+    });
+    return set;
+  };
+  const ringSets = fractions.map((f, i) => withoutHill(convexify((i === fractions.length - 1 ? withHills : x => x)(takeFlat(Math.max(2, Math.round(N * f)))))));
   const innerSet = ringSets[ringSets.length - 1];
   cells.forEach(c => {
     c.inner = innerSet.has(c.index);
