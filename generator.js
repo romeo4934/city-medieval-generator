@@ -244,7 +244,11 @@ function generateCity(opts) {
     const { de, te, along } = hillLocal(hl, x, y);
     const wob = hillWob(hl, te);
     const u = (de - hl.r0 * wob) / (hillBand(hl, te) * wob);
-    if (!hl.steps) return hl.h * (1 - smoothstep(u));
+    // Sommet arrondi selon la forme : seule une table (Orvieto) ou un éperon a un dessus vraiment plat
+    const DOME = { table: 0.02, eperon: 0.06, butte: 0.28, crete: 0.22, dissymetrique: 0.2 };
+    const dome = twin && k === 0 ? 0.05 : DOME[hl.type] || 0.2;
+    const round = 1 - dome * Math.min(1, (de / (hl.r0 * wob)) ** 2);
+    if (!hl.steps) return hl.h * (1 - smoothstep(u)) * round;
     // Paliers : 20 % de pente douce + 80 % répartis en ressauts presque verticaux
     let p = 0.2 * (1 - smoothstep(u));
     for (const uk of hl.steps) p += (0.8 / hl.steps.length) * (1 - smoothstep((u - uk) / LEDGE_W + 0.5));
