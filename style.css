@@ -197,3 +197,5 @@ main {
 .sight-info p { margin: 0 0 6px; }
 .sight-info .row2 { display: flex; align-items: center; gap: 6px; margin-top: 3px; }
 .sight-info .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
+.views .layer { margin-left: 8px; border-radius: 4px !important; }
+.views .layer.on { background: #5b4f3d; color: #fffaf0; }

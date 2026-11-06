@@ -219,6 +219,14 @@ function show(city) {
     </label>`).join('');
 }
 
+// ---------- Calque des factions : on peut le masquer pour mieux voir la ville ----------
+let showFactions = (() => { try { return localStorage.getItem('factions-layer') !== 'off'; } catch (e) { return true; } })();
+$('facToggle').onclick = () => {
+  showFactions = !showFactions;
+  try { localStorage.setItem('factions-layer', showFactions ? 'on' : 'off'); } catch (e) { /* mode privé */ }
+  drawMap();
+};
+
 // ---------- Sight: what a seer sees from a point ----------
 let sightCache = null, sightAt = null;
 function sightOverlay() {
@@ -251,13 +259,15 @@ function drawMap() {
   if (!current) return;
   $('sightInfo').hidden = mapView !== 'sight';
   if (mapView === 'sight') {
-    const svg = renderSVG(current, { view: 'plan' });
+    const svg = renderSVG(current, { view: 'plan', factions: showFactions });
     $('map').innerHTML = svg.slice(0, svg.lastIndexOf('</svg>')) + sightOverlay() + '</svg>';
-  } else $('map').innerHTML = renderSVG(current, { view: mapView });
-  document.querySelectorAll('.views button').forEach(b => b.classList.toggle('on', b.dataset.view === mapView));
+  } else $('map').innerHTML = renderSVG(current, { view: mapView, factions: showFactions });
+  $('facToggle').hidden = !(current.factions || []).length;
+  $('facToggle').classList.toggle('on', showFactions);
+  document.querySelectorAll('.views button[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === mapView));
   if (view) applyView();
 }
-document.querySelectorAll('.views button').forEach(b => b.onclick = () => {
+document.querySelectorAll('.views button[data-view]').forEach(b => b.onclick = () => {
   mapView = b.dataset.view;
   drawMap();
   writeHash(opts);
@@ -411,11 +421,11 @@ $('file').onchange = async () => {
 // ---------- export image (toujours la carte entière) ----------
 
 $('md').onclick = () => download(new Blob([citySheet(current)], { type: 'text/markdown' }), fileBase() + '.md');
-$('svg').onclick = () => download(new Blob([renderSVG(current, { view: mapView })], { type: 'image/svg+xml' }), fileBase() + (mapView === 'plan' ? '' : '-' + mapView) + '.svg');
+$('svg').onclick = () => download(new Blob([renderSVG(current, { view: mapView, factions: showFactions })], { type: 'image/svg+xml' }), fileBase() + (mapView === 'plan' ? '' : '-' + mapView) + '.svg');
 
 $('png').onclick = () => {
   const img = new Image();
-  const url = URL.createObjectURL(new Blob([renderSVG(current, { view: mapView })], { type: 'image/svg+xml' }));
+  const url = URL.createObjectURL(new Blob([renderSVG(current, { view: mapView, factions: showFactions })], { type: 'image/svg+xml' }));
   img.onload = () => {
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 3000;

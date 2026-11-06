@@ -276,6 +276,7 @@ function renderTerrainView(city, view) {
 }
 
 function renderSVG(city, options = {}) {
+  const FAC = options.factions === false ? [] : (city.factions || []);   // calque des factions (on peut le masquer)
   if (options.view === 'relief' || options.view === 'pentes') return renderTerrainView(city, options.view);
   const E = city.E;
   const out = [];
@@ -645,7 +646,7 @@ function renderSVG(city, options = {}) {
     out.push(`<circle cx="${n1(st.at[0])}" cy="${n1(st.at[1])}" r="${n1((k.secret ? 3.5 : 6) * ck)}" fill="${k.secret ? '#fffaf0' : '#5b4f3d'}" stroke="${k.secret ? '#7a2a2a' : '#fffaf0'}" stroke-width="${n1(1.6 * ck)}"/>`);
   }
   // Territoires des factions : une teinte légère par faction, et leur nom en grand
-  for (const f of city.factions || []) {
+  for (const f of FAC) {
     out.push(`<path d="${pathD(f.polys)}" fill="${f.color}" fill-opacity=".2" stroke="none" style="mix-blend-mode:multiply"/>`);
     // Bordure : un large ruban de la couleur de la faction, tracé à l'intérieur de son territoire (le long de ses murs)
     out.push(`<clipPath id="cmg-fac${f.index}"><path d="${pathD(f.polys)}"/></clipPath>`);
@@ -666,7 +667,7 @@ function renderSVG(city, options = {}) {
     const p = place(l.at[0], l.at[1], l.text, size, must);
     if (p) out.push(`<text class="${cls}" x="${n1(p[0])}" y="${n1(p[1])}">${esc(l.text)}</text>`);
   };
-  for (const f of city.factions || []) {
+  for (const f of FAC) {
     const p = place(f.at[0], f.at[1], f.name, fs * 1.7, true);
     out.push(`<text class="fac" x="${n1(p[0])}" y="${n1(p[1])}" fill="${f.color}">${esc(f.name)}</text>`);
   }
@@ -677,7 +678,7 @@ function renderSVG(city, options = {}) {
   }
   for (const l of city.labels) textAt(l.italic ? 'qtr' : l.small ? 'small' : 'lbl', l.italic ? fs * 1.15 : l.small ? fs * 0.68 : fs, l, !l.small);
   // Avec des factions, les quartiers passent après leurs noms : ils s'effacent plutôt que de les recouvrir
-  for (const d of city.districts) textAt('qtr', fs * 1.15, { at: d.at, text: d.name }, !(city.factions || []).length);
+  for (const d of city.districts) textAt('qtr', fs * 1.15, { at: d.at, text: d.name }, !FAC.length);
   for (const g of city.gateNames) textAt('gate', fs * 0.8, g, true);
   for (const sq of city.squares) textAt('small', fs * 0.68, { at: [sq.at[0], sq.at[1] + fs * 0.9], text: sq.name }, false);
   for (const ch of city.churches) textAt('small', fs * 0.68, { at: ch.at, text: ch.name }, false);
@@ -731,8 +732,8 @@ function renderSVG(city, options = {}) {
   });
 
   // Légende des factions : en haut à gauche, une pastille de couleur et le nom
-  if ((city.factions || []).length) {
-    const fx = -E + E * 0.04, fy = -E + E * 0.05, fsw = fs * 1.05, F2 = city.factions;
+  if (FAC.length) {
+    const fx = -E + E * 0.04, fy = -E + E * 0.05, fsw = fs * 1.05, F2 = FAC;
     const wbox = Math.max(...F2.map(f => f.name.length)) * fsw * 0.55 + fsw * 2.6;
     out.push(`<rect x="${n1(fx - fsw * 0.6)}" y="${n1(fy - fsw * 0.9)}" width="${n1(wbox)}" height="${n1(fsw * (F2.length * 1.5 + 0.6))}" rx="4" fill="${COLORS.land}" fill-opacity=".9" stroke="${COLORS.fence}" stroke-width="0.8"/>`);
     F2.forEach((f, i) => {
