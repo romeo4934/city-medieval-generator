@@ -111,7 +111,7 @@ function citySheetEn(city) {
       water: 'a canal runs at the foot of its wall', wall: 'nothing but the wall' };
     const nameOf = i => (city.factions.find(f => f.index === i) || {}).name || 'its neighbour';
     for (const f of city.factions) {
-      const parts = f.borders.map(b => `towards ${nameOf(b.with)}, ${BAR[b.type]}${b.waste ? ', with waste ground on both sides' : ''}, ${b.ways ? `${b.ways} way${b.ways > 1 ? 's' : ''} through` : 'and no way through'}`);
+      const parts = f.borders.map(b => `towards ${nameOf(b.with)}, ${b.river ? 'the river (crossed only by bridges) and ' : ''}${BAR[b.type]}${b.waste ? ', with waste ground on both sides' : ''}, ${b.ways ? `${b.ways} way${b.ways > 1 ? 's' : ''} through` : 'and no way through'}`);
       const extra = [];
       if (f.highest) extra.push('it holds the highest ground of all the factions');
       if (f.lowest) extra.push('it lies lowest, and its streets are watched from above');

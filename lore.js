@@ -129,7 +129,7 @@ function citySheetFr(city) {
     const deFr = t => t.replace(/^Les /, 'des ').replace(/^Le /, 'du ').replace(/^La /, 'de la ').replace(/^L'/, "de l'").replace(/^(?!des |du |de )/, 'de ');
     const aFr = t => t.replace(/^Les /, 'aux ').replace(/^Le /, 'au ').replace(/^La /, 'à la ').replace(/^L'/, "à l'").replace(/^(?!aux |au |à )/, 'à ');
     for (const f of city.factions) {
-      const parts = f.borders.map(b => `vers ${nameOf(b.with)}, ${BAR[b.type]}${b.waste ? ', avec des terrains vagues de part et d\'autre' : ''}, ${b.ways ? `${b.ways} passage${b.ways > 1 ? 's' : ''}` : 'et aucun passage'}`);
+      const parts = f.borders.map(b => `vers ${nameOf(b.with)}, ${b.river ? 'la rivière (on ne la passe que sur les ponts) et ' : ''}${BAR[b.type]}${b.waste ? ', avec des terrains vagues de part et d\'autre' : ''}, ${b.ways ? `${b.ways} passage${b.ways > 1 ? 's' : ''}` : 'et aucun passage'}`);
       const extra = [];
       if (f.highest) extra.push('elle tient le terrain le plus haut de toutes les factions');
       if (f.lowest) extra.push("elle est la plus basse, et ses rues sont surveillées d'en haut");

@@ -863,8 +863,60 @@ function generateCity(opts) {
     }
   }
 
+  // ================= 10c. Territoires des factions : partagés le long de la géographie =================
+  // Chaque faction part de son cœur et s'étend îlot par îlot ; franchir la rivière, une pente raide, une crête,
+  // un ravin, l'enceinte de la citadelle ou un vieux mur coûte cher : les frontières s'y arrêtent d'elles-mêmes.
+  let borders = [];
+  if (F.K) {
+    const zone = cells.filter(c => c.inner || c.citadel);
+    const taken0 = new Set(), seedCells = [];
+    for (const sd of F.seeds) {
+      const c = zone.filter(z => !taken0.has(z.index)).reduce((m, z) => (!m || dist(z.site, sd) < dist(m.site, sd) ? z : m), null);
+      seedCells.push(c);
+      if (c) taken0.add(c.index);
+    }
+    const own = new Map(), cst = new Map(), open = new Set();
+    seedCells.forEach((c, k) => { if (c) { own.set(c.index, k); cst.set(c.index, 0); open.add(c.index); } });
+    const climb = (a, b) => Math.abs(altitude(...a.site) - altitude(...b.site));
+    while (open.size) {
+      let u = -1, bu = Infinity;
+      for (const ci of open) if (cst.get(ci) < bu) { bu = cst.get(ci); u = ci; }
+      open.delete(u);
+      const cu = cells[u];
+      cellEdges(cu).forEach(([a, b]) => (edgeCells.get(ek(a, b)) || []).forEach(vi => {
+        const cv = cells[vi];
+        if (vi === u || !(cv.inner || cv.citadel)) return;
+        const key = ek(a, b);
+        const step = dist(cu.site, cv.site)
+          + (riverEdgeW.has(key) ? 12 * cellR : 0)                       // la rivière
+          + (citadelEdges.has(key) ? 8 * cellR : 0)                      // l'enceinte de la citadelle
+          + (oldWallEdges.has(key) ? 3 * cellR : 0)                      // un vieux mur encore debout
+          + (cv.steep !== cu.steep ? 4 * cellR : 0)                      // le pied ou le haut d'une pente raide
+          + Math.max(0, climb(cu, cv) - 6) * cellR * 0.35;               // un dénivelé (crête, ravin, falaise)
+        if (bu + step < (cst.has(vi) ? cst.get(vi) : Infinity)) { cst.set(vi, bu + step); own.set(vi, own.get(u)); open.add(vi); }
+      }));
+    }
+    cells.forEach(c => { c.faction = own.has(c.index) ? own.get(c.index) : -1; });
+    // Frontières réelles : chaque paire de territoires voisins, avec son obstacle (celui prévu, ou la rivière, ou le mur seul)
+    const pairs = new Map();
+    for (const c of zone) for (const o of neighbours(c)) {
+      if (!(o.inner || o.citadel) || o.faction < 0 || c.faction < 0 || o.faction === c.faction) continue;
+      const a = Math.min(c.faction, o.faction), b = Math.max(c.faction, o.faction), key = a + '-' + b;
+      if (!pairs.has(key)) {
+        const plan = F.borders.find(x => x.a === a && x.b === b);
+        pairs.set(key, { a, b, type: plan ? plan.type : 'wall', waste: plan ? plan.waste : 0, plan, river: false });
+      }
+      if (touches(c, new Set(cellEdges(o).map(([p, q]) => ek(p, q)).filter(k2 => riverEdgeW.has(k2))))) pairs.get(key).river = true;
+    }
+    borders = [...pairs.values()];
+    borders.forEach((b, k) => { b.k = k; if (b.type === 'water' && b.river) b.type = 'wall'; });   // la rivière fait déjà le fossé
+  }
   // Terrains vagues : le long de certaines frontières, plus personne n'ose bâtir (ruines, broussailles)
-  cells.forEach(c => { c.waste = !!F.K && c.inner && !c.citadel && !c.building && c.type !== 'plaza' && !c.terrace && F.isWaste(c.site); });
+  cells.forEach(c => {
+    c.waste = !!F.K && c.inner && !c.citadel && !c.building && c.type !== 'plaza' && !c.terrace && c.faction >= 0
+      && neighbours(c).some(o => (o.inner || o.citadel) && o.faction >= 0 && o.faction !== c.faction
+        && (borders.find(b => b.a === Math.min(c.faction, o.faction) && b.b === Math.max(c.faction, o.faction)) || {}).waste > 0);
+  });
 
   // ================= 11. Quartiers (chacun dans une seule enceinte) =================
   const rD = rng('quartiers|' + opts.size);
@@ -1255,7 +1307,7 @@ function generateCity(opts) {
     if (cur.length > 1) runs.push(cur);
     return runs.filter(r => polyLen(r) >= 30);
   };
-  const innerWalls = [], borderCanals = [];
+  const innerWalls = [], borderCanals = [], borderEdges = [];
   if (F.K) {
     const seen = new Set();
     for (const c of cells) {
@@ -1266,17 +1318,17 @@ function generateCity(opts) {
         seen.add(key);
         const o = (edgeCells.get(key) || []).map(ci => cells[ci]).find(x => x !== c);
         if (!o || !(o.inner || o.citadel) || o.faction < 0 || o.faction === c.faction || riverEdgeW.has(key)) continue;
-        const bd = F.borders.find(x => (x.a === c.faction && x.b === o.faction) || (x.b === c.faction && x.a === o.faction))
-          || F.borderNear([(verts[a][0] + verts[b][0]) / 2, (verts[a][1] + verts[b][1]) / 2]);
-        if (bd) innerWalls.push({ a: verts[a], b: verts[b], border: bd.k });   // chaque territoire est muré tout autour
+        const bd = borders.find(x => x.a === Math.min(c.faction, o.faction) && x.b === Math.max(c.faction, o.faction));
+        if (!bd) continue;
+        // Une frontière d'eau : un canal le long des îlots ; sinon un mur (chaque territoire est muré tout autour)
+        if (bd.type === 'water') borderEdges.push({ a: verts[a], b: verts[b], border: bd.k, w: bd.plan ? bd.plan.w : 8 });
+        else innerWalls.push({ a: verts[a], b: verts[b], border: bd.k });
       }
     }
     innerWalls.forEach(w => addSeg({ a: w.a, b: w.b, half: 4, kind: 'wall' }));
-    for (const bd of F.borders) if (bd.type === 'water') {
-      for (const run of F.lines(bd, 0).flatMap(runsAlongWater)) {
-        borderCanals.push({ points: run, w: bd.w, border: bd.k });
-        for (let i = 0; i + 1 < run.length; i++) addSeg({ a: run[i], b: run[i + 1], half: bd.w / 2 + 1.5, kind: 'river' });
-      }
+    for (const e of borderEdges) {
+      borderCanals.push({ points: [e.a, e.b], w: e.w, border: e.border });
+      addSeg({ a: e.a, b: e.b, half: e.w / 2 + 1.5, kind: 'river' });
     }
   }
   oldWalls.filter(w => w.standing).forEach(w => addSeg({ a: verts[w.a], b: verts[w.b], half: 2.5, kind: 'old' }));
@@ -1951,19 +2003,20 @@ function generateCity(opts) {
     const pool = X.factions.names.slice();
     const custom = opts.factionNames || [];
     const big = streets.filter(st => st.cls === 'main' || st.cls === 'road');
-    const crossings = F.borders.map(() => []);   // passages par frontière : portes, ponts
+    const crossings = borders.map(() => []);   // passages par frontière : portes, ponts
     const addCross = (bd, at, kind) => { if (bd && !crossings[bd.k].some(o => dist(o.at, at) < 15)) crossings[bd.k].push({ at, kind }); };
     // Portes : là où une grande rue passe le mur d'un territoire
     for (const w of innerWalls) for (const st of big) for (let i = 0; i + 1 < st.points.length; i++) {
       const h = segHit(st.points[i], st.points[i + 1], w.a, w.b);
-      if (h && !city.innerGates.some(g => dist(g.at, h.at) < 14)) { city.innerGates.push({ at: h.at, prev: w.a, next: w.b }); addCross(F.borders[w.border], h.at, 'gate'); }
+      if (h && !city.innerGates.some(g => dist(g.at, h.at) < 14)) { city.innerGates.push({ at: h.at, prev: w.a, next: w.b }); addCross(borders[w.border], h.at, 'gate'); }
     }
     // Ponts sur les canaux et les ravins des frontières
-    for (const bd of F.borders) {
+    for (const bd of borders) {
+      const P0 = bd.plan;
       const lines = bd.type === 'water' ? borderCanals.filter(c => c.border === bd.k).map(c => c.points)
-        : bd.type === 'ravine' ? F.lines(bd, 0).map(P => P.filter(p => Math.hypot(p[0], p[1]) < 1.35 * R)).filter(P => P.length > 1) : [];
-      if (bd.type === 'ravine') lines.forEach(P => city.ravines.push({ points: P, w: 2 * bd.floor, border: bd.k }));
-      const len = bd.type === 'water' ? bd.w + 8 : 2 * (bd.floor + bd.edge) + 6;
+        : bd.type === 'ravine' && P0 ? F.lines(P0, 0).map(P => P.filter(p => Math.hypot(p[0], p[1]) < 1.35 * R)).filter(P => P.length > 1) : [];
+      if (bd.type === 'ravine' && P0) lines.forEach(P => city.ravines.push({ points: P, w: 2 * P0.floor, border: bd.k }));
+      const len = bd.type === 'water' ? (P0 ? P0.w : 8) + 8 : P0 ? 2 * (P0.floor + P0.edge) + 6 : 20;
       for (const P of lines) for (let j = 0; j + 1 < P.length; j++) for (const st of big) for (let i = 0; i + 1 < st.points.length; i++) {
         const a = st.points[i], b = st.points[i + 1], h = segHit(a, b, P[j], P[j + 1]);
         if (!h || city.bridges.some(br => dist([br.x, br.y], h.at) < 12)) continue;
@@ -1976,8 +2029,8 @@ function generateCity(opts) {
       const t = [Math.cos(br.angle * Math.PI / 180), Math.sin(br.angle * Math.PI / 180)], o = br.length / 2 + 6;
       const p = [br.x - t[0] * o, br.y - t[1] * o], q = [br.x + t[0] * o, br.y + t[1] * o];
       if (domainAt(p) === 'out' || domainAt(q) === 'out') continue;
-      const fp = F.factionAt(p), fq = F.factionAt(q);
-      if (fp !== fq) addCross(F.borders.find(x => (x.a === fp && x.b === fq) || (x.a === fq && x.b === fp)), [br.x, br.y], 'bridge');
+      const fp = cellAt(p).faction, fq = cellAt(q).faction;
+      if (fp >= 0 && fq >= 0 && fp !== fq) addCross(borders.find(x => x.a === Math.min(fp, fq) && x.b === Math.max(fp, fq)), [br.x, br.y], 'bridge');
     }
     const PALETTE = ['#b5523b', '#3f6e9e', '#5b8a3c', '#8a4f9e', '#c29a2e', '#2f8c86', '#9e6a3f', '#5f6470'];
     for (let k = 0; k < F.K; k++) {
@@ -1994,7 +2047,7 @@ function generateCity(opts) {
         outline: own.flatMap(c => cellEdges(c).filter(([a, b]) => !(edgeCells.get(ek(a, b)) || []).some(ci => ci !== c.index && (cells[ci].inner || cells[ci].citadel) && cells[ci].faction === k)).map(([a, b]) => [verts[a], verts[b]])),
         meanAlt: Math.round(meanAlt), citadel: own.some(c => c.citadel), river: own.some(c => touchesRiver(c)), market: own.some(c => c.type === 'plaza'),
         districts: [...new Set(own.map(c => c.district).filter(d => d !== undefined && d >= 0))].map(d => city.districts[d] && city.districts[d].name).filter(Boolean),
-        borders: F.borders.filter(b => b.a === k || b.b === k).map(b => ({ type: b.type, ways: crossings[b.k].length, with: b.a === k ? b.b : b.a, waste: b.waste > 0 })),
+        borders: borders.filter(b => b.a === k || b.b === k).map(b => ({ type: b.type, river: b.river, ways: crossings[b.k].length, with: b.a === k ? b.b : b.a, waste: b.waste > 0 })),
       });
     }
     const altAll = city.factions.map(f => f.meanAlt);
@@ -2058,11 +2111,12 @@ function generateCity(opts) {
       city.cables.push({ secret: false, from: A, to: B, factions: [A.faction, B.faction], name: lineName(false), ...sp, pylons });
     }
     // Lignes secrètes : par-dessus certaines frontières, entre deux maisons-tours discrètes
-    for (const b of F.borders) {
+    for (const b of borders) {
       if (rK() > 0.5) continue;
       const fa = city.factions.find(f => f.index === b.a), fb = city.factions.find(f => f.index === b.b);
       if (!fa || !fb) continue;
-      const line = F.lines(b, 0).flat().filter(p => domainAt(p) !== 'out');
+      // Un point de la frontière : le milieu d'un côté d'îlot entre les deux territoires
+      const line = [...innerWalls, ...borderEdges].filter(e => e.border === b.k).map(e => [(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2]);
       if (!line.length) continue;
       const mid = line[Math.floor(rK() * line.length)];
       const near = f => {

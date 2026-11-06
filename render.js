@@ -646,8 +646,10 @@ function renderSVG(city, options = {}) {
   }
   // Territoires des factions : une teinte légère par faction, et leur nom en grand
   for (const f of city.factions || []) {
-    out.push(`<path d="${pathD(f.polys)}" fill="${f.color}" fill-opacity=".16" stroke="none" style="mix-blend-mode:multiply"/>`);
-    out.push(`<path d="${(f.outline || []).map(lineD).join('')}" fill="none" stroke="${f.color}" stroke-opacity=".75" stroke-width="3" stroke-dasharray="10 6" stroke-linecap="round"/>`);
+    out.push(`<path d="${pathD(f.polys)}" fill="${f.color}" fill-opacity=".2" stroke="none" style="mix-blend-mode:multiply"/>`);
+    // Bordure : un large ruban de la couleur de la faction, tracé à l'intérieur de son territoire (le long de ses murs)
+    out.push(`<clipPath id="cmg-fac${f.index}"><path d="${pathD(f.polys)}"/></clipPath>`);
+    out.push(`<path d="${(f.outline || []).map(lineD).join('')}" fill="none" stroke="${f.color}" stroke-opacity=".7" stroke-width="${n1(Math.max(10, E / 70))}" stroke-linejoin="round" clip-path="url(#cmg-fac${f.index})"/>`);
   }
   const boxOf = (x, y, text, size) => { const w = text.length * size * 0.55, h = size * 1.25; return [x - w / 2, y - h / 2, x + w / 2, y + h / 2]; };
   const place = (x, y, text, size, mustShow) => {
@@ -727,6 +729,18 @@ function renderSVG(city, options = {}) {
     out.push(`<rect x="${n1(lx)}" y="${n1(y - sw / 2)}" width="${n1(sw)}" height="${n1(sw)}" fill="${COLORS[k]}" stroke="${COLORS.buildingLine}" stroke-width="0.6"/>`);
     out.push(`<text class="leg" x="${n1(lx + sw * 1.5)}" y="${n1(y)}">${t}</text>`);
   });
+
+  // Légende des factions : en haut à gauche, une pastille de couleur et le nom
+  if ((city.factions || []).length) {
+    const fx = -E + E * 0.04, fy = -E + E * 0.05, fsw = fs * 1.05, F2 = city.factions;
+    const wbox = Math.max(...F2.map(f => f.name.length)) * fsw * 0.55 + fsw * 2.6;
+    out.push(`<rect x="${n1(fx - fsw * 0.6)}" y="${n1(fy - fsw * 0.9)}" width="${n1(wbox)}" height="${n1(fsw * (F2.length * 1.5 + 0.6))}" rx="4" fill="${COLORS.land}" fill-opacity=".9" stroke="${COLORS.fence}" stroke-width="0.8"/>`);
+    F2.forEach((f, i) => {
+      const y = fy + i * fsw * 1.5;
+      out.push(`<rect x="${n1(fx)}" y="${n1(y - fsw / 2)}" width="${n1(fsw)}" height="${n1(fsw)}" fill="${f.color}" fill-opacity=".75" stroke="${f.color}" stroke-width="1.2"/>`);
+      out.push(`<text class="leg" x="${n1(fx + fsw * 1.5)}" y="${n1(y)}" style="font-size:${n1(fsw)}px">${esc(f.name)}</text>`);
+    });
+  }
 
   // Échelle (1 unité = 1 m)
   const sx = -E + E * 0.06, sy = E - E * 0.06;
