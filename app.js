@@ -226,6 +226,14 @@ function show(city) {
     </label>`).join('');
 }
 
+// ---------- Noms : on peut masquer les noms des rues, quartiers et lieux ----------
+let showNames = (() => { try { return localStorage.getItem('names-layer') !== 'off'; } catch (e) { return true; } })();
+$('namesToggle').onclick = () => {
+  showNames = !showNames;
+  try { localStorage.setItem('names-layer', showNames ? 'on' : 'off'); } catch (e) { /* mode privé */ }
+  drawMap();
+};
+
 // ---------- Calque des factions : on peut le masquer pour mieux voir la ville ----------
 let showFactions = (() => { try { return localStorage.getItem('factions-layer') !== 'off'; } catch (e) { return true; } })();
 $('facToggle').onclick = () => {
@@ -370,11 +378,12 @@ function drawMap() {
     return;
   }
   if (mapView === 'sight') {
-    const svg = renderSVG(current, { view: 'plan', factions: showFactions });
+    const svg = renderSVG(current, { view: 'plan', factions: showFactions, labels: showNames });
     $('map').innerHTML = svg.slice(0, svg.lastIndexOf('</svg>')) + sightOverlay() + '</svg>';
-  } else $('map').innerHTML = renderSVG(current, { view: mapView, factions: showFactions });
+  } else $('map').innerHTML = renderSVG(current, { view: mapView, factions: showFactions, labels: showNames });
   $('facToggle').hidden = !(current.factions || []).length;
   $('facToggle').classList.toggle('on', showFactions);
+  $('namesToggle').classList.toggle('on', showNames);
   document.querySelectorAll('.views button[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === mapView));
   if (view) applyView();
 }
@@ -536,11 +545,11 @@ $('file').onchange = async () => {
 // ---------- export image (toujours la carte entière) ----------
 
 $('md').onclick = () => download(new Blob([citySheet(current)], { type: 'text/markdown' }), fileBase() + '.md');
-$('svg').onclick = () => download(new Blob([renderSVG(current, { view: mapView, factions: showFactions })], { type: 'image/svg+xml' }), fileBase() + (mapView === 'plan' ? '' : '-' + mapView) + '.svg');
+$('svg').onclick = () => download(new Blob([renderSVG(current, { view: mapView, factions: showFactions, labels: showNames })], { type: 'image/svg+xml' }), fileBase() + (mapView === 'plan' ? '' : '-' + mapView) + '.svg');
 
 $('png').onclick = () => {
   const img = new Image();
-  const url = URL.createObjectURL(new Blob([renderSVG(current, { view: mapView, factions: showFactions })], { type: 'image/svg+xml' }));
+  const url = URL.createObjectURL(new Blob([renderSVG(current, { view: mapView, factions: showFactions, labels: showNames })], { type: 'image/svg+xml' }));
   img.onload = () => {
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 3000;

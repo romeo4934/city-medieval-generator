@@ -280,7 +280,8 @@ function renderTerrainView(city, view) {
 }
 
 function renderSVG(city, options = {}) {
-  const FAC = options.factions === false ? [] : (city.factions || []);   // calque des factions (on peut le masquer)
+  const FAC = options.factions === false ? [] : (city.factions || []);
+  const NAMES = options.labels !== false;   // noms de rues, quartiers, lieux (on peut les masquer)   // calque des factions (on peut le masquer)
   if (options.view === 'relief' || options.view === 'pentes') return renderTerrainView(city, options.view);
   const E = city.E;
   const out = [];
@@ -668,6 +669,7 @@ function renderSVG(city, options = {}) {
     return [x, y];
   };
   const textAt = (cls, size, l, must) => {
+    if (!NAMES) return;
     const p = place(l.at[0], l.at[1], l.text, size, must);
     if (p) out.push(`<text class="${cls}" x="${n1(p[0])}" y="${n1(p[1])}">${esc(l.text)}</text>`);
   };
@@ -694,7 +696,7 @@ function renderSVG(city, options = {}) {
   // Noms de rues, écrits le long de la rue (dans le sens de la lecture)
   const stSize = { main: fs * 0.62, rue: fs * 0.5, ruelle: fs * 0.42, road: fs * 0.55 };
   const stPaths = [], stTexts = [];
-  city.streetLabels.forEach((sl, k) => {
+  (NAMES ? city.streetLabels : []).forEach((sl, k) => {
     let pts = sl.points.length > 2 ? smoothLine(sl.points) : sl.points;
     if (pts[pts.length - 1][0] < pts[0][0]) pts = pts.slice().reverse();
     let L = 0;
