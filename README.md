@@ -26,13 +26,15 @@ On about half the borders, **waste ground** lines both sides of the wall: a no m
 
 **Sight.** The **Sight** view shows what a seer can see from any point: click the map to move them, tick "from a tower" to raise them 20 m. Terrain, houses (9 m), landmarks and walls block the view; hidden ground is darkened, with distance rings, and the panel lists which faction quarters can be seen, and how much of each. From the street, a seer sees a few streets; from the esplanade or a tower, they look over the borders.
 
+**Edit the terrain.** The **✎ Terrain** button opens the editor on the relief: **Raise** and **Lower** paint hills and hollows with a brush (size and strength adjustable), **Smooth** softens a slope, **River** draws a river point by point (double-click or Enter to finish; both ends run on to the edge of the map), **Erase river** removes one. **Build the city** then rebuilds the whole city on your ground: streets, walls, quarters, factions. Edits are kept in the page address and in the saved file; **Clear all** goes back to the generated terrain.
+
 **Three views**, with the buttons above the map:
 - **Map**: the city plan, with hill shading, contours every 10 m and cliffs;
 - **Relief**: elevation colours, shading, contours every 5 m labelled in metres and spot heights, with the city on top;
 - **Slopes**: slope classes (easy, buildable, terraces, too steep, rock), with houses in black to check where people built;
 - **Sight**: what can be seen from a point (see above).
 
-**The terrain decides everything.** An elevation map (plain, one hill, several hills — up to 10, like Rome or Lisbon — or a valley) determines:
+**The ground is continuous**: a gentle general slope, rolling ground, hills that merge into each other through saddles, and rivers that dig their valleys. **The terrain decides everything.** An elevation map (plain, one hill, several hills — up to 10, like Rome or Lisbon — or a valley) determines:
 - where **rivers** flow: they follow the low ground and never climb a hill;
 - the **shape of the hill**, taken from real sites: lone knoll (Vézelay), long ridge (Nuremberg, Edinburgh), spur of a plateau (Provins, Laon), mesa with sheer sides (Orvieto), lopsided hill (gentle on one side, a cliff on the other); each hill has its own height (25–120 m), orientation, length and irregular outline;
 - where nobody **builds**: steep slopes become vineyards or terraced gardens;
@@ -97,6 +99,7 @@ Scale: 1 unit = 1 metre.
 | `index.html` | the page |
 | `style.css` | the layout |
 | `i18n.js` | every name and label, in English and French |
+| `terrain.js` | the height grid, smooth noise, and the editor's brushes (shared by the generator and the page) |
 | `geo.js` | tools: reproducible randomness, geometry, Voronoi, shortest paths |
 | `catalog.js` | sizes, landmarks, house types |
 | `generator.js` | the model: terrain, rivers, growth, walls, street network (A* on the terrain, then growth), plots (pure data) |

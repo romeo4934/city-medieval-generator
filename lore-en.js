@@ -108,7 +108,7 @@ function citySheetEn(city) {
     L.push('## Factions', '');
     L.push('Every territory is walled all round, with a fortified gate wherever a main street passes; the smaller streets are walled up.', '');
     const BAR = { ridge: 'its wall runs along the crest of a steep ridge', ravine: 'its wall stands on the edge of a ravine between two cliffs',
-      water: 'a canal runs at the foot of its wall', wall: 'nothing but the wall' };
+      water: 'a canal (crossed only by bridges)', wall: 'nothing but the wall', heights: 'its wall follows the edge of the heights, above the slope' };
     const nameOf = i => (city.factions.find(f => f.index === i) || {}).name || 'its neighbour';
     for (const f of city.factions) {
       const parts = f.borders.map(b => `towards ${nameOf(b.with)}, ${b.river ? 'the river (crossed only by bridges) and ' : ''}${BAR[b.type]}${b.waste ? ', with waste ground on both sides' : ''}, ${b.ways ? `${b.ways} way${b.ways > 1 ? 's' : ''} through` : 'and no way through'}`);

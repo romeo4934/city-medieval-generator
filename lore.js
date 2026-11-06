@@ -123,7 +123,7 @@ function citySheetFr(city) {
     L.push('## Factions', '');
     L.push("Chaque territoire est muré tout autour, avec une porte fortifiée partout où passe une grande rue ; les petites rues sont murées.", '');
     const BAR = { ridge: "son mur suit la crête d'une arête escarpée", ravine: "son mur se dresse au bord d'un ravin entre deux falaises",
-      water: 'un canal coule au pied de son mur', wall: 'rien que le mur' };
+      water: 'un canal (on ne le passe que sur les ponts)', wall: 'rien que le mur', heights: 'son mur suit le bord des hauteurs, au-dessus de la pente' };
     const nameOf = i => (city.factions.find(f => f.index === i) || {}).name || 'sa voisine';
     // de / à + article : « des Loyalistes », « au Quartier du Maire »
     const deFr = t => t.replace(/^Les /, 'des ').replace(/^Le /, 'du ').replace(/^La /, 'de la ').replace(/^L'/, "de l'").replace(/^(?!des |du |de )/, 'de ');

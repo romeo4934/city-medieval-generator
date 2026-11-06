@@ -255,11 +255,21 @@ function generateCity(opts) {
     }
     return hl.h * p;
   };
+  // Sol continu : une pente générale douce, des ondulations, et des hauteurs (en mètres, ramenées à l'échelle du relief)
+  const noise = makeNoise(seedHash(opts.seed + '|sol'));
+  const tiltA = rT() * Math.PI * 2, tilt = [Math.cos(tiltA), Math.sin(tiltA)];
+  const groundMeters = (x, y) => {
+    const roll = relief === 'plaine' ? 3 : 7, upland = relief === 'plaine' ? 2 : 10;
+    return roll * noise(x / (0.32 * R), y / (0.32 * R), 3) + upland * noise(x / (1.1 * R) + 40, y / (1.1 * R) - 40, 2)
+      + (relief === 'plaine' ? 1.5 : 6) * (tilt[0] * x + tilt[1] * y) / R;
+  };
+  // Union douce des collines : là où deux collines se touchent, un col les relie au lieu d'un creux
+  const smax = (a, b, k = 0.08) => { const h = Math.max(0, Math.min(1, 0.5 + (a - b) / (2 * k))); return b + (a - b) * h + k * h * (1 - h); };
   const elevBase = (x, y) => {
-    let h = 0.03 * (Math.sin(x / 97 + ph[0]) + Math.sin(y / 131 + ph[1]) + Math.sin((x + y) / 173 + ph[2])) / 3;
+    let h = groundMeters(x, y) / reliefHeight;
     if (hilly) {
       let m = 0;
-      for (let k = 0; k < hills.length; k++) m = Math.max(m, hillHeight(k, x, y));
+      for (let k = 0; k < hills.length; k++) m = smax(m, hillHeight(k, x, y));
       h += m;
     } else if (relief === 'vallee') {
       const { dir, a, band } = valley;
@@ -278,8 +288,10 @@ function generateCity(opts) {
     }
     return h;
   };
-  // Le relief des factions (crêtes, ravins, terrasse de l'esplanade, en mètres) s'ajoute au relief naturel
-  const elev = (F.K || T0) ? (x, y) => elevBase(x, y) + F.meters(x, y) / reliefHeight : elevBase;
+  // Le relief est calculé une fois sur une grille fine (puis lu par interpolation) : c'est là que s'ajoutent
+  // la terrasse de l'esplanade, les retouches faites à la main dans l'éditeur, et les vallées creusées par les rivières
+  let EG = null;
+  const elev = (x, y) => (EG ? sampleGrid(EG, x, y) : elevBase(x, y) + (T0 ? F.meters(x, y) / reliefHeight : 0));
   const slope = (x, y) => Math.hypot(elev(x + 3, y) - elev(x - 3, y), elev(x, y + 3) - elev(x, y - 3)) / 6;
   // Altitudes réelles : la colline (ou les versants) mesure quelques dizaines de mètres ; la plaine est presque plate
   const rAlt = rng('altitude');
@@ -293,6 +305,9 @@ function generateCity(opts) {
   const gradient = (x, y) => [elev(x + 3, y) - elev(x - 3, y), elev(x, y + 3) - elev(x, y - 3)];
   // Seuils (urbanisme médiéval réel) : on bâtit jusqu'à ~15 %, en terrasses et clairsemé jusqu'à 25 %, rien au-delà
   const SLOPE_EASY = 15, SLOPE_MAX = 25;
+  EG = makeGrid(E, Math.max(3, (2 * E) / 520), (x, y) => elevBase(x, y) + (T0 ? F.meters(x, y) / reliefHeight : 0));
+  const terrainEdits = Array.isArray(opts.terrainEdits) ? opts.terrainEdits : [];
+  for (const e of terrainEdits) applyEdit(EG, e, reliefHeight);
 
   // Lignes de ressaut (haut de la falaise) et index de leurs segments pour tester les maisons
   const cliffs = [];
@@ -348,17 +363,18 @@ function generateCity(opts) {
   };
   // Pente "raide" : plus de 40 % de la pente maximale du relief
   // Un îlot est "raide" si sa pente dépasse 25 % en son centre ou en son point d'origine
-  cells.forEach(c => {
+  const measureCells = () => cells.forEach(c => {
     const ctr = Geo.centroid(c.ids.map(id => verts[id]));
     c.elev = elev(...c.site);
     c.slope = Math.max(slopePct(...c.site), slopePct(...ctr));
     c.steep = c.slope > SLOPE_MAX;
     // Pente sans les frontières des factions : la ville a grandi avant que les factions ne s'y retranchent
-    c.steepBase = (F.K || T0) ? Math.hypot(elevBase(c.site[0] + 3, c.site[1]) - elevBase(c.site[0] - 3, c.site[1]), elevBase(c.site[0], c.site[1] + 3) - elevBase(c.site[0], c.site[1] - 3)) / 6 * reliefHeight * 100 > SLOPE_MAX : c.steep;
+    c.steepBase = c.steep;
     c.top = hilly && !c.steep && hillHeight(0, ...c.site) > 0.8;   // plateau de la colline principale
     c.faction = F.factionAt(c.site);                               // -1 : pas de factions
     c.terrace = !!T0 && F.terraceLevel(c.site) > 0.4;              // le haut de l'esplanade
   });
+  measureCells();
 
   // Sommets secondaires : un petit sanctuaire porte le nom de la colline
   const HILL_NAMES = X.hills;
@@ -416,7 +432,35 @@ function generateCity(opts) {
     return adj;
   };
   const rivers = [];
-  if (count >= 1) {
+  const userRivers = Array.isArray(opts.userRivers) ? opts.userRivers.filter(r => Array.isArray(r) && r.length >= 2) : null;
+  if (userRivers) {
+    // Rivières dessinées à la main : on suit le tracé de point en point le long du réseau, prolongé aux deux bouts
+    const flatG = [];
+    for (const key of edgeCells.keys()) { const [a, b] = unkey(key); if (!(isBorder(a) && isBorder(b))) link(flatG, a, b, dist(verts[a], verts[b])); }
+    const vNear = p => { let best = -1, bd = Infinity; verts.forEach((v, i) => { const d = dist(v, p); if (d < bd) { bd = d; best = i; } }); return best; };
+    userRivers.forEach((pts0, ri) => {
+      const pts = pts0.slice();
+      const toEdge = (p, q) => {
+        // Toujours jusqu'au bord, dans le prolongement du dernier tronçon : l'eau vient de quelque part et va quelque part
+        const d = norm([p[0] - q[0], p[1] - q[1]]);
+        return [p[0] + d[0] * 2 * E, p[1] + d[1] * 2 * E];
+      };
+      const head = toEdge(pts[0], pts[1]), tail = toEdge(pts[pts.length - 1], pts[pts.length - 2]);
+      const ids = pts.map(vNear);
+      if (head) ids.unshift(nearestEntry(head));
+      if (tail) ids.push(nearestEntry(tail));
+      const path = [];
+      for (let k = 0; k + 1 < ids.length; k++) {
+        if (ids[k] === ids[k + 1]) continue;
+        const sp = shortestPaths(flatG, verts.length, [ids[k + 1]]);
+        if (!isFinite(sp.dist[ids[k]])) continue;
+        const seg = tracePath(sp.prev, ids[k]);
+        path.push(...(path.length ? seg.slice(1) : seg));
+      }
+      const clean = path.filter((v, i) => i === 0 || v !== path[i - 1]);
+      if (clean.length >= 2) rivers.push({ path: clean, w: (14 + N * 0.15) * (ri === 0 ? 1 : 0.65) });
+    });
+  } else if (count >= 1) {
     const dir = [Math.cos(a0), Math.sin(a0)], P0 = [-dir[1] * off0, dir[0] * off0];
     let from = nearestEntry([P0[0] - dir[0] * 2 * E, P0[1] - dir[1] * 2 * E]);
     let to = nearestEntry([P0[0] + dir[0] * 2 * E, P0[1] + dir[1] * 2 * E]);
@@ -425,7 +469,7 @@ function generateCity(opts) {
     if (from !== to && isFinite(sp.dist[from])) rivers.push({ path: tracePath(sp.prev, from), w: 14 + N * 0.15 });
   }
   // Affluents : chacun arrive d'un autre côté et se jette dans la rivière principale
-  for (let t = 1; t < count && rivers.length; t++) {
+  for (let t = 1; t < count && rivers.length && !userRivers; t++) {
     const main = rivers[0].path;
     const mainKeys = new Set(rivers.flatMap(rv => rv.path.slice(1).map((v, k) => ek(rv.path[k], v))));
     const at = t === 1 ? a1 : a0 - (a1 - a0) + (rR() - 0.5) * 0.4, ot = t === 1 ? off1 : -off1;
@@ -454,6 +498,36 @@ function generateCity(opts) {
     return m;
   };
   const touchesRiver = c => touches(c, riverEdgeW);
+  // Les rivières creusent leur vallée : le sol descend doucement vers l'eau des deux côtés
+  if (rivers.length) {
+    const { n, step } = EG, D = new Float32Array(n * n).fill(1e9);
+    for (const rv of rivers) {
+      const P = smooth(rv.path.map(id => verts[id]), 3);
+      for (let k = 0; k + 1 < P.length; k++) {
+        const L = dist(P[k], P[k + 1]), m = Math.max(1, Math.ceil(L / (step / 2)));
+        for (let t = 0; t <= m; t++) {
+          const x = P[k][0] + (P[k + 1][0] - P[k][0]) * t / m, y = P[k][1] + (P[k + 1][1] - P[k][1]) * t / m;
+          const i = Math.round((x + E) / step), j = Math.round((y + E) / step);
+          if (i >= 0 && j >= 0 && i < n && j < n) D[j * n + i] = 0;
+        }
+      }
+    }
+    // Distance à la rivière en chaque point de la grille (deux passes, en mètres)
+    const s2 = step * Math.SQRT2;
+    for (let j = 0; j < n; j++) for (let i = 0; i < n; i++) {
+      const k = j * n + i;
+      if (i > 0) D[k] = Math.min(D[k], D[k - 1] + step);
+      if (j > 0) { D[k] = Math.min(D[k], D[k - n] + step); if (i > 0) D[k] = Math.min(D[k], D[k - n - 1] + s2); if (i < n - 1) D[k] = Math.min(D[k], D[k - n + 1] + s2); }
+    }
+    for (let j = n - 1; j >= 0; j--) for (let i = n - 1; i >= 0; i--) {
+      const k = j * n + i;
+      if (i < n - 1) D[k] = Math.min(D[k], D[k + 1] + step);
+      if (j < n - 1) { D[k] = Math.min(D[k], D[k + n] + step); if (i < n - 1) D[k] = Math.min(D[k], D[k + n + 1] + s2); if (i > 0) D[k] = Math.min(D[k], D[k + n - 1] + s2); }
+    }
+    const wMax = Math.max(...rivers.map(rv => rv.w)), W = Math.max(70, 0.16 * R), depth = relief === 'vallee' ? 3 : 4 + 0.004 * R;
+    for (let k = 0; k < n * n; k++) EG.data[k] -= (depth / reliefHeight) * (1 - smoothstep(Math.max(0, D[k] - wMax / 2) / W));
+    measureCells();
+  }
   const downOf = c => Math.max(-1, ...c.ids.map(id => (downstream.has(id) ? downstream.get(id) : -1)));
 
   // ================= 4. Le noyau : la place du marché =================
@@ -906,10 +980,18 @@ function generateCity(opts) {
         const plan = F.borders.find(x => x.a === a && x.b === b);
         pairs.set(key, { a, b, type: plan ? plan.type : 'wall', waste: plan ? plan.waste : 0, plan, river: false });
       }
-      if (touches(c, new Set(cellEdges(o).map(([p, q]) => ek(p, q)).filter(k2 => riverEdgeW.has(k2))))) pairs.get(key).river = true;
+      const pr = pairs.get(key);
+      if (touches(c, new Set(cellEdges(o).map(([p, q]) => ek(p, q)).filter(k2 => riverEdgeW.has(k2))))) pr.river = true;
+      // Le bord des hauteurs : la frontière passe entre un îlot raide (ou bien plus haut) et son voisin
+      pr.edges = (pr.edges || 0) + 1;
+      if (c.steep !== o.steep || Math.abs(altitude(...c.site) - altitude(...o.site)) > 10) pr.high = (pr.high || 0) + 1;
     }
     borders = [...pairs.values()];
-    borders.forEach((b, k) => { b.k = k; if (b.type === 'water' && b.river) b.type = 'wall'; });   // la rivière fait déjà le fossé
+    borders.forEach((b, k) => {
+      b.k = k;
+      if (b.type === 'water' && b.river) b.type = 'wall';       // la rivière fait déjà le fossé
+      if (b.type === 'wall' && (b.high || 0) >= Math.max(1, b.edges * 0.35)) b.type = 'heights';   // le mur suit le bord des hauteurs
+    });
   }
   // Terrains vagues : le long de certaines frontières, plus personne n'ose bâtir (ruines, broussailles)
   cells.forEach(c => {

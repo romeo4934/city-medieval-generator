@@ -2,11 +2,8 @@
 /*
  * Factions: the city is shared between rival factions, the Mayor's among them. Each holds a territory
  * (an irregular region around its own heart, anywhere in the city: the Mayor is not necessarily central).
- * Every territory is walled all round (a fantasy city); along the borders the ground adds its own barrier:
- *   - a ridge (a long steep hill line: nobody builds on it, and it hides one quarter from the other),
- *   - a ravine (a gorge between two cliffs, crossed only by bridges),
- *   - water (a canal, crossed only by bridges),
- *   - or nothing but the wall.
+ * Every territory is walled all round (a fantasy city), or lined with a canal; the generator then draws the
+ * real borders along the geography (the river, the edge of the heights, the citadel, old walls).
  * Some borders are lined with waste ground: a no man's land where nobody dares build any more.
  * The Mayor's territory holds the Esplanade: a terrace on top of a cliff, above the square where the crowd listens.
  *
@@ -16,7 +13,8 @@
  * Pure data. Depends on nothing but the random generator it is given.
  */
 
-const BARRIER_TYPES = ['ridge', 'ravine', 'water', 'wall'];
+// Barriers the factions build themselves (the ground adds the river and the heights on its own)
+const BARRIER_TYPES = ['wall', 'water', 'wall'];
 
 function makeFactions({ K, R, E, cellR, rand, terrace }) {
   const TAU = Math.PI * 2;
@@ -67,8 +65,6 @@ function makeFactions({ K, R, E, cellR, rand, terrace }) {
     while (types.length < byPair.size) types.push(...BARRIER_TYPES.slice().sort(() => rand() - 0.5));
     [...byPair.values()].forEach((b, k) => {
       b.k = k; b.type = types[k];
-      if (b.type === 'ridge') { b.H = 26 + rand() * 18; b.w = Math.max(28, 0.06 * R) * (0.9 + rand() * 0.4); }
-      if (b.type === 'ravine') { b.D = 16 + rand() * 14; b.floor = 4 + rand() * 4; b.edge = 6 + rand() * 3; }
       if (b.type === 'water') b.w = 7 + rand() * 3;
       // No man's land: on one border out of two, a strip of waste ground on both sides of the wall
       b.waste = rand() < 0.5 ? (0.3 + rand() * 0.35) * cellR : 0;
@@ -76,7 +72,6 @@ function makeFactions({ K, R, E, cellR, rand, terrace }) {
     });
   }
   const borderOf = q => (q.j >= 0 ? byPair.get(pairKey(q.i, q.j)) : null);
-  const fade = r => 1 - smoothstep((r - 1.05 * R) / (0.3 * R));   // barriers fade out past the walls
 
   const factionAt = p => (n ? nearest2(p[0], p[1]).i : -1);
   const borderNear = p => (n ? borderOf(nearest2(p[0], p[1])) : null);
@@ -106,19 +101,7 @@ function makeFactions({ K, R, E, cellR, rand, terrace }) {
   };
 
   // --- Elevation added by barriers and the terrace, in metres ---
-  const meters = (x, y) => {
-    let h = 0;
-    if (n) {
-      const q = nearest2(x, y), b = borderOf(q);
-      if (b && (b.type === 'ridge' || b.type === 'ravine')) {
-        const d = (q.d2 - q.d1) / 2, r = Math.hypot(x, y);
-        if (b.type === 'ridge' && d < b.w) h += b.H * (1 - smoothstep(d / b.w)) * fade(r);
-        if (b.type === 'ravine' && d < b.floor + b.edge) h -= b.D * (1 - smoothstep((d - b.floor) / b.edge)) * fade(r - 0.2 * R);
-      }
-    }
-    if (T) h += T.H * terraceLevel([x, y]);
-    return h;
-  };
+  const meters = (x, y) => (T ? T.H * terraceLevel([x, y]) : 0);   // only the esplanade's terrace changes the ground
 
   // --- Lines along a border, at a given distance from it (positive: on side a) ---
   const lines = (b, off) => {
@@ -145,14 +128,8 @@ function makeFactions({ K, R, E, cellR, rand, terrace }) {
     return out;
   };
 
-  // Ravine rims (cliffs on both sides) and the terrace's cliff
+  // The terrace's cliff
   const cliffs = [];
-  for (const b of borders) if (b.type === 'ravine') {
-    for (const off of [b.floor + b.edge / 2, -(b.floor + b.edge / 2)]) for (const pts of lines(b, off)) {
-      if (pts.every(p => Math.hypot(p[0], p[1]) > 1.35 * R)) continue;
-      cliffs.push({ points: pts.filter(p => Math.hypot(p[0], p[1]) < 1.35 * R), side: off > 0 ? -1 : 1, drop: Math.round(b.D), kind: 'ravine', border: b.k });
-    }
-  }
   if (T) {
     const pts = [], a0 = Math.atan2(T.front[1], T.front[0]);
     for (let i = -24; i <= 24; i++) {

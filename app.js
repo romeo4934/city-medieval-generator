@@ -76,6 +76,9 @@ function normalize(o) {
     names: Array.isArray(o.names) ? o.names.map(n => String(n || '')) : [],
     factionNames: Array.isArray(o.factionNames) ? o.factionNames.map(n => String(n || '')) : [],
     cityName: String(o.cityName || ''),
+    // Retouches du terrain faites dans l'éditeur, et rivières dessinées (null = rivières du générateur)
+    terrainEdits: Array.isArray(o.terrainEdits) ? o.terrainEdits.filter(e => e && 'rls'.includes(e.t) && [e.x, e.y, e.r, e.a].every(Number.isFinite)).map(e => ({ t: e.t, x: +e.x, y: +e.y, r: +e.r, a: +e.a, g: +e.g || 0 })) : [],
+    userRivers: Array.isArray(o.userRivers) ? o.userRivers.filter(r => Array.isArray(r) && r.length >= 2).map(r => r.map(p => [+p[0], +p[1]])) : null,
     lang: lang === 'fr' ? 'fr' : 'en',
   };
 }
@@ -103,6 +106,8 @@ function readHash() {
     names: p.has('noms') ? p.get('noms').split('|') : [],
     factionNames: p.has('factions') ? p.get('factions').split('|') : [],
     cityName: p.get('nom'),
+    terrainEdits: p.has('terre') ? editsFromText(p.get('terre')) : [],
+    userRivers: p.has('eaux') ? (p.get('eaux') === 'none' ? [] : riversFromText(p.get('eaux'))) : null,
   });
 }
 
@@ -116,6 +121,8 @@ function writeHash(o) {
   p.set('lang', lang);
   if (o.names.some(Boolean)) p.set('noms', o.names.join('|'));
   if (o.factionNames.some(Boolean)) p.set('factions', o.factionNames.join('|'));
+  if (o.terrainEdits.length) p.set('terre', editsToText(o.terrainEdits));
+  if (o.userRivers) p.set('eaux', o.userRivers.length ? riversToText(o.userRivers) : 'none');
   history.replaceState(null, '', '#' + p);
 }
 
@@ -227,6 +234,105 @@ $('facToggle').onclick = () => {
   drawMap();
 };
 
+// ---------- Éditeur de terrain : on peint le relief, on trace les rivières, puis on rebâtit la ville ----------
+let editing = false, tool = 'r', brush = { r: 90, a: 4 };
+let edBase = null;        // terrain de la ville actuelle (déjà avec les retouches précédentes)
+let edNew = [];           // coups de pinceau depuis la dernière construction
+let edRivers = null;      // rivières dessinées (null = celles du générateur)
+let edDraft = [];         // rivière en cours de tracé
+let edUndo = [];          // pile d'annulation
+let edGroup = 0, edStroke = null, edCursor = null;
+document.querySelectorAll('input[name=tool]').forEach(i => i.onchange = () => {
+  tool = i.value;
+  $('editHint').textContent = tool === 'river' ? (lang === 'fr' ? 'Clique pour poser les points de la rivière ; double-clic ou Entrée pour finir.' : 'Click to place the river\'s points; double-click or Enter to finish.')
+    : tool === 'erase' ? (lang === 'fr' ? 'Clique sur une rivière pour l\'effacer.' : 'Click a river to erase it.')
+    : (lang === 'fr' ? 'Glisse pour peindre (Maj + glisser : déplacer la carte).' : 'Drag to paint (Shift + drag: move the map).');
+  drawMap();
+});
+$('brushR').oninput = () => { brush.r = +$('brushR').value; $('brushRv').textContent = brush.r + ' m'; drawMap(); };
+$('brushA').oninput = () => { brush.a = +$('brushA').value; $('brushAv').textContent = brush.a + ' m'; };
+const riversNow = () => (edRivers || (current.rivers || []).map(rv => rv.points.filter((p, i, a) => i % 6 === 0 || i === a.length - 1)));
+function previewCity() {
+  const T = edBase;
+  const alt = T.alt.slice();
+  const g = { E: T.E, step: T.step, n: T.G + 1, data: alt };
+  for (const e of edNew) applyEdit(g, e, 1);
+  let mn = Infinity, mx = -Infinity;
+  for (const v of alt) { if (v < mn) mn = v; if (v > mx) mx = v; }
+  const w = (current.rivers[0] || { w: 16 }).w;
+  return { ...current, terrain: { ...T, alt, min: mn, maxAlt: mx, flat: false }, rivers: riversNow().map((pts, k) => ({ w: k ? w * 0.65 : w, points: pts })) };
+}
+function editOverlay() {
+  const out = [];
+  if (edDraft.length) out.push(`<path d="M${edDraft.map(p => p.join(' ')).join('L')}" fill="none" stroke="#3f6e9e" stroke-width="${current.E / 120}" stroke-dasharray="${current.E / 60} ${current.E / 90}"/>` + edDraft.map(p => `<circle cx="${p[0]}" cy="${p[1]}" r="${current.E / 110}" fill="#3f6e9e"/>`).join(''));
+  if (edCursor && 'rls'.includes(tool)) out.push(`<circle cx="${edCursor[0]}" cy="${edCursor[1]}" r="${brush.r}" fill="none" stroke="#2f2820" stroke-width="${current.E / 400}" stroke-dasharray="${current.E / 120}"/>`);
+  return out.join('');
+}
+let edRaf = 0;
+const redrawSoon = () => { if (!edRaf) edRaf = requestAnimationFrame(() => { edRaf = 0; drawMap(); }); };
+function stamp(p) { edNew.push({ t: tool, x: p[0], y: p[1], r: brush.r, a: brush.a, g: edGroup }); edStroke = p; }
+function editDown(e) {
+  const q = toMap(e), p = [q.x, q.y];
+  if ('rls'.includes(tool)) {
+    edGroup++;
+    edUndo.push({ kind: 'brush', g: edGroup });
+    stamp(p);
+    $('map').querySelector('svg').setPointerCapture(e.pointerId);
+    redrawSoon();
+  } else if (tool === 'river') {
+    edDraft.push(p);
+    redrawSoon();
+  } else if (tool === 'erase') {
+    const rs = riversNow();
+    let best = -1, bd = Math.max(30, current.E / 40);
+    rs.forEach((pts, k) => { for (let i = 0; i + 1 < pts.length; i++) { const d = Geo.distToSegment(p, pts[i], pts[i + 1]); if (d < bd) { bd = d; best = k; } } });
+    if (best >= 0) { edUndo.push({ kind: 'rivers', prev: edRivers }); edRivers = rs.filter((_, k) => k !== best); redrawSoon(); }
+  }
+}
+function editMove(e) {
+  const q = toMap(e), p = [q.x, q.y];
+  edCursor = p;
+  if (edStroke && 'rls'.includes(tool) && Math.hypot(p[0] - edStroke[0], p[1] - edStroke[1]) > brush.r / 3) stamp(p);
+  redrawSoon();
+}
+function editUp() { edStroke = null; }
+function finishRiver() {
+  if (edDraft.length >= 2) { edUndo.push({ kind: 'rivers', prev: edRivers }); edRivers = [...riversNow(), edDraft]; }
+  edDraft = [];
+  redrawSoon();
+}
+window.addEventListener('keydown', e => {
+  if (!editing) return;
+  if (e.key === 'Enter' && tool === 'river') finishRiver();
+  if (e.key === 'Escape') { edDraft = []; redrawSoon(); }
+});
+function setEditing(on) {
+  editing = on;
+  $('editBtn').classList.toggle('on', on);
+  $('editInfo').hidden = !on;
+  $('map').classList.toggle('editing', on);
+  if (on) { edBase = current.terrain; edNew = []; edRivers = opts.userRivers ? opts.userRivers.map(r => r.slice()) : null; edDraft = []; edUndo = []; }
+  drawMap();
+}
+$('editBtn').onclick = () => setEditing(!editing);
+$('editUndo').onclick = () => {
+  if (edDraft.length) { edDraft.pop(); return redrawSoon(); }
+  const last = edUndo.pop();
+  if (!last) return;
+  if (last.kind === 'brush') edNew = edNew.filter(e => e.g !== last.g);
+  else edRivers = last.prev;
+  redrawSoon();
+};
+$('editClear').onclick = () => { setEditing(false); build({ ...opts, terrainEdits: [], userRivers: null }); };
+$('editBuild').onclick = () => {
+  if (edDraft.length >= 2) finishRiver();
+  const terrainEdits = [...opts.terrainEdits, ...edNew.map(e => ({ ...e, x: Math.round(e.x), y: Math.round(e.y) }))];
+  const userRivers = edRivers ? edRivers.map(r => r.map(p => [Math.round(p[0]), Math.round(p[1])])) : null;
+  setEditing(false);
+  mapView = 'plan';
+  build({ ...opts, terrainEdits, userRivers });
+};
+
 // ---------- Sight: what a seer sees from a point ----------
 let sightCache = null, sightAt = null;
 function sightOverlay() {
@@ -258,6 +364,11 @@ $('tower').onchange = () => drawMap();
 function drawMap() {
   if (!current) return;
   $('sightInfo').hidden = mapView !== 'sight';
+  if (editing) {
+    $('map').innerHTML = renderSVG(previewCity(), { view: 'relief', factions: false }).replace(/<\/svg>$/, editOverlay() + '</svg>');
+    if (view) applyView();
+    return;
+  }
   if (mapView === 'sight') {
     const svg = renderSVG(current, { view: 'plan', factions: showFactions });
     $('map').innerHTML = svg.slice(0, svg.lastIndexOf('</svg>')) + sightOverlay() + '</svg>';
@@ -348,6 +459,7 @@ $('map').addEventListener('wheel', e => {
 }, { passive: false });
 
 $('map').addEventListener('dblclick', e => {
+  if (editing) { if (tool === 'river') finishRiver(); return; }
   const p = toMap(e);
   zoomAt(e.shiftKey ? 1 / 2 : 2, p.x, p.y);
 });
@@ -363,11 +475,13 @@ $('map').addEventListener('pointerdown', e => {
   dragMoved = 0;
   const svg = $('map').querySelector('svg');
   if (!svg || e.button !== 0) return;
+  if (editing && !e.shiftKey) { editDown(e); return; }
   drag = { startScreen: [e.clientX, e.clientY], view: { ...view } };
   svg.setPointerCapture(e.pointerId);
   svg.classList.add('dragging');
 });
 $('map').addEventListener('pointermove', e => {
+  if (editing) editMove(e);
   if (!drag) return;
   const svg = $('map').querySelector('svg');
   const rect = svg.getBoundingClientRect();
@@ -380,6 +494,7 @@ $('map').addEventListener('pointermove', e => {
   applyView();
 });
 const endDrag = () => {
+  if (editing) editUp();
   drag = null;
   const svg = $('map').querySelector('svg');
   if (svg) svg.classList.remove('dragging');

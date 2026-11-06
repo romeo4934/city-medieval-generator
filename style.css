@@ -199,3 +199,12 @@ main {
 .sight-info .swatch { width: 10px; height: 10px; border-radius: 2px; flex: none; }
 .views .layer { margin-left: 8px; border-radius: 4px !important; }
 .views .layer.on { background: #5b4f3d; color: #fffaf0; }
+.edit-info { max-width: 290px; }
+.edit-info .tools { display: grid; grid-template-columns: 1fr 1fr; gap: 2px 8px; margin-bottom: 6px; }
+.edit-info .tools label, .edit-info .slider { display: flex; align-items: center; gap: 6px; margin: 2px 0; font-size: 12px; }
+.edit-info .slider input { flex: 1; }
+.edit-info .buttons { display: flex; gap: 6px; margin-top: 6px; }
+.edit-info .buttons button { flex: 1; padding: 4px 6px; font-size: 12px; }
+#map.editing svg { cursor: crosshair; }
+.edit-info .tools label { justify-content: flex-start; flex-direction: row; text-align: left; }
+.edit-info .tools input { margin: 0; flex: none; }
