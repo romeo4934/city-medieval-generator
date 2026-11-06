@@ -16,15 +16,16 @@
 // Barriers the factions build themselves (the ground adds the river and the heights on its own)
 const BARRIER_TYPES = ['wall', 'water', 'wall'];
 
-function makeFactions({ K, R, E, cellR, rand, terrace }) {
+function makeFactions({ K, R, E, cellR, rand, terrace, fixed }) {
   const TAU = Math.PI * 2;
   const smoothstep = t => (t <= 0 ? 0 : t >= 1 ? 1 : t * t * (3 - 2 * t));
-  const n = K >= 2 ? K + 1 : 0;   // K rival factions + the Mayor's (the last one)
-  const mayor = n ? n - 1 : -1;
+  // K rival factions + the Mayor's (the last one); a ready-made city gives its own hearts, without a mayor
+  const n = fixed ? fixed.length : K >= 2 ? K + 1 : 0;
+  const mayor = fixed ? -1 : n ? n - 1 : -1;
 
   // --- Hearts of the territories: spread over the town, the Mayor's anywhere among them ---
-  const seeds = [];
-  for (let k = 0; k < n; k++) {
+  const seeds = fixed ? fixed.map(p => [p[0] * R, p[1] * R]) : [];
+  for (let k = fixed ? n : 0; k < n; k++) {
     let best = null, bs = -1;
     for (let t = 0; t < 40; t++) {
       const a = rand() * TAU, r = Math.sqrt(rand()) * 0.62 * R, p = [Math.cos(a) * r, Math.sin(a) * r];
@@ -34,7 +35,7 @@ function makeFactions({ K, R, E, cellR, rand, terrace }) {
     seeds.push(best);
   }
   // The Mayor's heart: any of them (shuffle the last place)
-  if (n) { const m = Math.floor(rand() * n); [seeds[m], seeds[mayor]] = [seeds[mayor], seeds[m]]; }
+  if (n && !fixed) { const m = Math.floor(rand() * n); [seeds[m], seeds[mayor]] = [seeds[mayor], seeds[m]]; }
 
   // A gentle warp, so that borders wind instead of running straight
   const wA = 0.07 * R, wL1 = 0.22 * R, wL2 = 0.13 * R, ph = [rand(), rand(), rand(), rand()].map(x => x * TAU);

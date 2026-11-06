@@ -108,6 +108,28 @@ function drawMonument(b, yard, rand, c, K) {
       }
       break;
     }
+    case 'purificateur': {
+      // Le Purificateur (Kades) : un temple blanc et sa haute tour, deux cloîtres, les entrepôts, le noviciat, un mur bas
+      const u = norm([yard[1][0] - yard[0][0], yard[1][1] - yard[0][1]]), v = [-u[1], u[0]];
+      const L = Math.hypot(yard[1][0] - yard[0][0], yard[1][1] - yard[0][1]), W = Math.hypot(yard[2][0] - yard[1][0], yard[2][1] - yard[1][1]);
+      const at = (x, y) => [ctr[0] + u[0] * x + v[0] * y, ctr[1] + u[1] * x + v[1] * y];
+      const box = (x, y, l, w) => rect(at(x, y), u, l, w);
+      S.yardColor = 'court';
+      S.shapes.push({ polys: [yard], fill: 'none', stroke: 2.2, strokeColor: 'buildingLine' });
+      S.shapes.push({ polys: [box(-L * 0.05, -W * 0.08, L * 0.44, W * 0.3)], fill: '#fbf8f0', stroke: 1.8, outline: true });
+      const tr = Math.min(L, W) * 0.11;
+      S.shapes.push({ polys: [circle(at(L * 0.22, -W * 0.08), tr, 24)], fill: '#ffffff', stroke: 1.8, outline: true });
+      S.shapes.push({ polys: [circle(at(L * 0.22, -W * 0.08), tr * 0.45, 16)], fill: '#e9e3d6', stroke: 0.8 });
+      const q = Math.min(L * 0.2, W * 0.28);
+      for (const x of [-L * 0.3, -L * 0.08]) {
+        S.shapes.push({ polys: [box(x, W * 0.24, q, q), box(x, W * 0.24, q * 0.55, q * 0.55)], fill: '#efe9dc', stroke: 1, evenodd: true });
+        S.shapes.push({ polys: [box(x, W * 0.24, q * 0.55, q * 0.55)], fill: 'green' });
+      }
+      S.shapes.push({ polys: [0, 1, 2].map(k => box(L * 0.3, W * (0.08 + k * 0.13), L * 0.26, W * 0.09)), fill: 'hall', stroke: 1 });
+      S.shapes.push({ polys: [box(-L * 0.36, -W * 0.3, L * 0.18, W * 0.16)], fill: '#e9e2d2', stroke: 1 });
+      label.at = at(0, W * 0.48);
+      break;
+    }
     case 'moulin':
       S.yardColor = 'field1';
       S.shapes.push({ polys: [circle(ctr, 6, 16)], fill: 'building', stroke: 1 });

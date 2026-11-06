@@ -45,7 +45,8 @@ function sightGrid(city) {
   };
   const raise = h => k => { top[k] = Math.max(top[k], ground[k] + h); };
   for (const poly of [...city.houses.stone, ...city.houses.timber, ...city.houses.thatch]) fillPoly(poly, raise(SIGHT_HEIGHTS.house));
-  for (const s of city.specials || []) for (const sh of s.shapes || []) for (const poly of sh.polys || []) fillPoly(poly, raise(SIGHT_HEIGHTS.landmark));
+  // Le Purificateur, « visible de trois jours de marche » : sa tour monte bien plus haut que tout
+  for (const s of city.specials || []) for (const sh of s.shapes || []) for (const poly of sh.polys || []) fillPoly(poly, raise(s.id === 'purificateur' ? 45 : SIGHT_HEIGHTS.landmark));
   // Walls: a thick line
   const line = (a, b, h, w) => {
     const L = Math.hypot(b[0] - a[0], b[1] - a[1]), steps = Math.max(1, Math.ceil(L / (g / 2)));

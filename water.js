@@ -6,7 +6,7 @@
  */
 
 function makeWaterworks(T) {
-  const { rivers, rand, domainAt, slopeAt, addBarrier, cellR, nCanals = 1, nIslands = 1, X } = T;
+  const { rivers, rand, domainAt, slopeAt, addBarrier, cellR, nCanals = 1, nIslands = 1, X, islandSpecs = [] } = T;
   const norm = v => { const l = Math.hypot(v[0], v[1]) || 1; return [v[0] / l, v[1] / l]; };
   const resample = (pts, step) => {
     const out = [pts[0]];
@@ -43,6 +43,28 @@ function makeWaterworks(T) {
         mills.push({ at: c, axis: t, name: pick(X.mills, usedMill) });
       }
       made++;
+    }
+    // Îles imposées (ville toute faite) : à l'endroit voulu, avec leurs ponts
+    if (ri === 0) for (const sp of islandSpecs) {
+      let i = 2, bd = Infinity;
+      P.forEach((p, k) => { const d = Math.hypot(p[0] - sp.at[0], p[1] - sp.at[1]); if (k > 1 && k < P.length - 2 && d < bd) { bd = d; i = k; } });
+      const t = tangent(i), len = sp.len, wid = sp.wid;
+      const ellipse = (a, b) => Array.from({ length: 28 }, (_, k) => {
+        const th = (k / 28) * Math.PI * 2, x = Math.cos(th) * a, y = Math.sin(th) * b;
+        return [P[i][0] + t[0] * x - t[1] * y, P[i][1] + t[1] * x + t[0] * y];
+      });
+      const wa = len / 2 + 14, wb = wid / 2 + rv.w * 0.9;
+      const water = ellipse(wa, wb), land = ellipse(len / 2, wid / 2);
+      // Ponts : vers la rive gauche, la rive droite, ou vers un point donné (le marché)
+      const n = [-t[1], t[0]];   // vers la rive droite quand la rivière coule vers l'est
+      const along = (d, a, b) => { const c = d[0] * t[0] + d[1] * t[1], s2 = d[0] * n[0] + d[1] * n[1]; return 1 / Math.sqrt((c / a) ** 2 + (s2 / b) ** 2); };
+      const bridges = (sp.bridges || []).map(side => {
+        let d = side === 'right' ? n : side === 'left' ? [-n[0], -n[1]] : norm([sp.toward[0] - P[i][0], sp.toward[1] - P[i][1]]);
+        const r0 = along(d, len / 2, wid / 2) - 3, r1 = along(d, wa, wb) + 6;
+        return { x: P[i][0] + d[0] * (r0 + r1) / 2, y: P[i][1] + d[1] * (r0 + r1) / 2, angle: (Math.atan2(d[1], d[0]) * 180) / Math.PI, length: r1 - r0 };
+      });
+      islands.push({ water, land, at: P[i], axis: t, len, wid, name: sp.name, kind: sp.kind, key: sp.key, bridges });
+      addBarrier([...water, water[0]], 1);
     }
     // Île : la rivière s'élargit et se partage autour d'une île (en ville, sur la rivière principale)
     if (ri === 0) for (let tries = 0, made = 0; tries < 40 * Math.max(1, nIslands) && made < nIslands; tries++) {

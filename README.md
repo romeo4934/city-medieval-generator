@@ -78,6 +78,10 @@ On about half the borders, **waste ground** lines both sides of the wall: a no m
 
 **The city sheet**, in the panel and exportable as Markdown, tells what the map shows: the site, the history read in the walls, the gates and their roads, each quarter and its atmosphere, notable places, every street, and a few story hooks.
 
+**Ready-made cities.** The **Ready-made city** menu opens a city whose geography and main places are imposed, the generator building the rest around them. The first one is **Kades**: a wide valley, a river in the middle, the Hill of Wheat with the white Purifier and its congregation (right bank, upstream), the Hill of Swords with the Loyalists' fort (left bank, downstream), the Mask Island between them with its stone esplanade, speaking tower and House of the Mask (three bridges), the market and the Guild's gate and school under the fort, the merchants' villas below the Purifier, Theatre Island downstream (a single footbridge), walled quarters with cables over the walls, and the Zone between the two quarters that fought too much. Presets live in `presets.js` (positions in fractions of the city radius, names in both languages).
+
+**Winter.** The **Winter** button covers the city in snow and smoke rises from the chimneys.
+
 ## Use
 
 - **Size**: from small town (~2,000 people) to great city (~50,000) and mega city (~150,000–200,000, like Paris around 1300; it takes 8–20 s to generate).
@@ -107,6 +111,7 @@ Scale: 1 unit = 1 metre.
 | `water.js` | water works: mill races and mills, islands |
 | `outskirts.js` | outside the walls: suburb church, leper house, tanneries, mills, gallows |
 | `factions.js` | factions: territories, border barriers (ridges, ravines, canals, walls), the mayor's esplanade |
+| `presets.js` | ready-made cities (Kades) |
 | `sight.js` | the Sight view: what can be seen from a point (radial line of sight over terrain and buildings) |
 | `monuments.js` | drawing landmarks in their precincts |
 | `names.js` | names and crossings: streets, roads, bridges, stairs, gates, inns |

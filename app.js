@@ -77,6 +77,7 @@ function normalize(o) {
     names: Array.isArray(o.names) ? o.names.map(n => String(n || '')) : [],
     factionNames: Array.isArray(o.factionNames) ? o.factionNames.map(n => String(n || '')) : [],
     cityName: String(o.cityName || ''),
+    preset: typeof PRESETS !== 'undefined' && PRESETS[o.preset] ? o.preset : '',
     // Retouches du terrain faites dans l'éditeur, et rivières dessinées (null = rivières du générateur)
     terrainEdits: Array.isArray(o.terrainEdits) ? o.terrainEdits.filter(e => e && 'rls'.includes(e.t) && [e.x, e.y, e.r, e.a].every(Number.isFinite)).map(e => ({ t: e.t, x: +e.x, y: +e.y, r: +e.r, a: +e.a, g: +e.g || 0 })) : [],
     userRivers: Array.isArray(o.userRivers) ? o.userRivers.filter(r => Array.isArray(r) && r.length >= 2).map(r => r.map(p => [+p[0], +p[1]])) : null,
@@ -108,6 +109,7 @@ function readHash() {
     names: p.has('noms') ? p.get('noms').split('|') : [],
     factionNames: p.has('factions') ? p.get('factions').split('|') : [],
     cityName: p.get('nom'),
+    preset: p.get('preset'),
     terrainEdits: p.has('terre') ? editsFromText(p.get('terre')) : [],
     userRivers: p.has('eaux') ? (p.get('eaux') === 'none' ? [] : riversFromText(p.get('eaux'))) : null,
   });
@@ -118,6 +120,7 @@ function writeHash(o) {
     graine: o.seed, taille: o.size, relief: o.relief, plan: o.plan, enceinte: o.walls, haute: o.twin, citadelle: o.citadel, forme: o.hillType, vallee: o.valleyType, bat: o.buildings.join(','),
   });
   if (o.cityName) p.set('nom', o.cityName);
+  if (o.preset) p.set('preset', o.preset);
   for (const [k, h] of COUNTS) if (o[k] !== null && o[k] !== undefined) p.set(h, o[k]);
   if (mapView !== 'plan') p.set('vue', mapView);
   p.set('lang', lang);
@@ -173,6 +176,7 @@ function build(o) {
   $('walls').value = opts.walls;
   $('twin').value = opts.twin;
   $('citadel').value = opts.citadel;
+  $('preset').value = opts.preset;
   for (const [k] of COUNTS) $(k).value = opts[k] === null ? '' : opts[k];
   $('hillType').value = opts.hillType;
   $('valleyType').value = opts.valleyType;
@@ -229,6 +233,22 @@ function show(city) {
       <input type="text" data-k="${k}" value="${escAttr(opts.names[k] || '')}" placeholder="${escAttr(d.auto)}">
     </label>`).join('');
 }
+
+// ---------- Ville toute faite (presets.js) : sa graine et sa taille, le reste est imposé par le preset ----------
+$('preset').onchange = () => {
+  const k = $('preset').value, P = PRESETS[k];
+  view = null;
+  build(P ? { ...opts, preset: k, seed: P.seed, size: P.size, names: [], cityName: '', factionNames: [], nFactions: null, terrainEdits: [], userRivers: null }
+    : { ...opts, preset: '', names: [], cityName: '', factionNames: [] });
+};
+
+// ---------- Hiver : neige et fumée ----------
+let winter = (() => { try { return localStorage.getItem('winter') === 'on'; } catch (e) { return false; } })();
+$('winterToggle').onclick = () => {
+  winter = !winter;
+  try { localStorage.setItem('winter', winter ? 'on' : 'off'); } catch (e) { /* mode privé */ }
+  drawMap();
+};
 
 // ---------- Noms : on peut masquer les noms des rues, quartiers et lieux ----------
 let showNames = (() => { try { return localStorage.getItem('names-layer') !== 'off'; } catch (e) { return true; } })();
@@ -382,12 +402,13 @@ function drawMap() {
     return;
   }
   if (mapView === 'sight') {
-    const svg = renderSVG(current, { view: 'plan', factions: showFactions, labels: showNames });
+    const svg = renderSVG(current, { view: 'plan', factions: showFactions, labels: showNames, winter });
     $('map').innerHTML = svg.slice(0, svg.lastIndexOf('</svg>')) + sightOverlay() + '</svg>';
-  } else $('map').innerHTML = renderSVG(current, { view: mapView, factions: showFactions, labels: showNames });
+  } else $('map').innerHTML = renderSVG(current, { view: mapView, factions: showFactions, labels: showNames, winter });
   $('facToggle').hidden = !(current.factions || []).length;
   $('facToggle').classList.toggle('on', showFactions);
   $('namesToggle').classList.toggle('on', showNames);
+  $('winterToggle').classList.toggle('on', winter);
   document.querySelectorAll('.views button[data-view]').forEach(b => b.classList.toggle('on', b.dataset.view === mapView));
   if (view) applyView();
 }
@@ -549,11 +570,11 @@ $('file').onchange = async () => {
 // ---------- export image (toujours la carte entière) ----------
 
 $('md').onclick = () => download(new Blob([citySheet(current)], { type: 'text/markdown' }), fileBase() + '.md');
-$('svg').onclick = () => download(new Blob([renderSVG(current, { view: mapView, factions: showFactions, labels: showNames })], { type: 'image/svg+xml' }), fileBase() + (mapView === 'plan' ? '' : '-' + mapView) + '.svg');
+$('svg').onclick = () => download(new Blob([renderSVG(current, { view: mapView, factions: showFactions, labels: showNames, winter })], { type: 'image/svg+xml' }), fileBase() + (mapView === 'plan' ? '' : '-' + mapView) + '.svg');
 
 $('png').onclick = () => {
   const img = new Image();
-  const url = URL.createObjectURL(new Blob([renderSVG(current, { view: mapView, factions: showFactions, labels: showNames })], { type: 'image/svg+xml' }));
+  const url = URL.createObjectURL(new Blob([renderSVG(current, { view: mapView, factions: showFactions, labels: showNames, winter })], { type: 'image/svg+xml' }));
   img.onload = () => {
     const canvas = document.createElement('canvas');
     canvas.width = canvas.height = 3000;

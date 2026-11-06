@@ -391,7 +391,18 @@ function renderSVG(city, options = {}) {
   }
   for (const isl of city.islands || []) {
     fill([isl.water], 'water', ` stroke="${COLORS.waterLine}" stroke-width="1.2"`);
-    fill([isl.land], 'townGround', ` stroke="${COLORS.waterLine}" stroke-width="1"`);
+    fill([isl.land], isl.kind === 'esplanade' ? 'plaza' : 'townGround', ` stroke="${COLORS.waterLine}" stroke-width="1"`);
+    const f = isl.feature;
+    if (!f) continue;
+    // L'île du pouvoir : dalle de pierre, la tour (ronde), la maison du masque
+    if (f.tower) {
+      out.push(`<path d="${pathD([Geo.inset(isl.land, 4)])}" fill="none" stroke="${COLORS.roadEdge}" stroke-width="0.8" stroke-dasharray="2 3"/>`);
+      out.push(`<circle cx="${n1(f.tower[0])}" cy="${n1(f.tower[1])}" r="${n1(f.tower[2])}" fill="#cfc6b4" stroke="${COLORS.buildingLine}" stroke-width="2"/><circle cx="${n1(f.tower[0])}" cy="${n1(f.tower[1])}" r="${n1(f.tower[2] * 0.45)}" fill="#9a8f7c"/>`);
+    }
+    if (f.house) fill([f.house], '#3b3530', ` stroke="${COLORS.buildingLine}" stroke-width="1.2"`);
+    // L'île des théâtres : scènes en demi-cercle, lanternes
+    if (f.stages) fill(f.stages, '#d9b98e', ` stroke="${COLORS.buildingLine}" stroke-width="1.2"`);
+    if (f.lanterns) for (const [x, y] of f.lanterns) out.push(`<circle cx="${n1(x)}" cy="${n1(y)}" r="1.6" fill="#e8b33c" stroke="#7a3a26" stroke-width="0.5"/>`);
   }
 
   // Rues : chaque rue avec sa vraie largeur (bordure d'abord pour que les croisements se fondent)
@@ -650,6 +661,21 @@ function renderSVG(city, options = {}) {
     drawn.push(st.at);
     out.push(`<circle cx="${n1(st.at[0])}" cy="${n1(st.at[1])}" r="${n1((k.secret ? 3.5 : 6) * ck)}" fill="${k.secret ? '#fffaf0' : '#5b4f3d'}" stroke="${k.secret ? '#7a2a2a' : '#fffaf0'}" stroke-width="${n1(1.6 * ck)}"/>`);
   }
+  // Hiver : un voile de neige sur tout, de la neige sur les toits, de la fumée qui sort des cheminées
+  if (options.winter) {
+    out.push(`<rect x="${n1(-E)}" y="${n1(-E)}" width="${n1(2 * E)}" height="${n1(2 * E)}" fill="#f3f5f8" fill-opacity=".5"/>`);
+    const roofs = [...city.roofs.tile, ...city.roofs.slate, ...city.roofs.thatch];
+    if (roofs.length) out.push(`<path d="${pathD(roofs)}" fill="#ffffff" fill-opacity=".72" stroke="#9aa3ad" stroke-width="0.5"/>`);
+    let sd = 7;
+    const rnd = () => { sd = (sd * 16807) % 2147483647; return sd / 2147483647; };
+    const puffs = [];
+    roofs.forEach(h => {
+      if (rnd() > 0.12) return;
+      const c = h.reduce((a, p) => [a[0] + p[0] / h.length, a[1] + p[1] / h.length], [0, 0]);
+      for (let k = 0; k < 3; k++) puffs.push(`<circle cx="${n1(c[0] + 3 + k * 3.5)}" cy="${n1(c[1] - 2 - k * 2.5)}" r="${n1(1.6 + k * 1.1)}"/>`);
+    });
+    if (puffs.length) out.push(`<g fill="#6b6f75" fill-opacity=".22">${puffs.join('')}</g>`);
+  }
   // Territoires des factions : une teinte légère par faction, et leur nom en grand
   for (const f of FAC) {
     out.push(`<path d="${pathD(f.polys)}" fill="${f.color}" fill-opacity=".2" stroke="none" style="mix-blend-mode:multiply"/>`);
@@ -739,7 +765,7 @@ function renderSVG(city, options = {}) {
 
   // Légende des factions : en haut à gauche, une pastille de couleur et le nom
   if (FAC.length) {
-    const fx = -E + E * 0.04, fy = -E + E * 0.05, fsw = fs * 1.05, F2 = FAC;
+    const fx = -E + E * 0.04, fy = -E + E * 0.13, fsw = fs * 1.05, F2 = FAC;   // sous les boutons des vues
     const wbox = Math.max(...F2.map(f => f.name.length)) * fsw * 0.55 + fsw * 2.6;
     out.push(`<rect x="${n1(fx - fsw * 0.6)}" y="${n1(fy - fsw * 0.9)}" width="${n1(wbox)}" height="${n1(fsw * (F2.length * 1.5 + 0.6))}" rx="4" fill="${COLORS.land}" fill-opacity=".9" stroke="${COLORS.fence}" stroke-width="0.8"/>`);
     F2.forEach((f, i) => {

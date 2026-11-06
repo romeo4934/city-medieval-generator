@@ -17,13 +17,19 @@
 
 function generateCity(opts) {
   const size = SIZES[opts.size] || SIZES.moyenne;
-  const wanted = opts.buildings || DEFAULT_BUILDINGS;
+  const wanted0 = opts.buildings || DEFAULT_BUILDINGS;
   const customNames = opts.names || [];
   // Un tirage par élément : ajouter une rivière ou un bâtiment ne déplace pas le reste
   const rng = tag => mulberry32(seedHash(opts.seed + '|' + tag));
   const lang = opts.lang === 'fr' ? 'fr' : 'en';
   const X = textFor(lang);   // tous les noms et textes dans la langue choisie (i18n.js)
   const autoName = townName(rng('nom'), X);
+  // Ville toute faite (presets.js) : la géographie et les lieux imposés, le générateur bâtit le reste
+  const scen = opts.preset && typeof PRESETS !== 'undefined' ? PRESETS[opts.preset] || null : null;
+  const SN = scen ? scen.names[lang] : null;
+  // Îles imposées : leur emplacement est réservé dès le départ (ni îlot bâti, ni enclos, ni marché dessus)
+  const onIsland = p => !!(scen && scen.islands && scen.islands.some(sp => Math.hypot(p[0] - sp.at[0] * R, p[1] - sp.at[1] * R) < (Math.max(sp.len, sp.wid) / 2) * R + 18));
+  const wanted = scen ? [...new Set([...wanted0.filter(id => id !== 'esplanade'), 'chateau'])] : wanted0;   // Kades : le fort des loyalistes
   // Quantités choisies par l'utilisateur (null = au hasard)
   const num = (v, lo, hi) => (v === null || v === undefined || v === '' || isNaN(+v) ? null : Math.max(lo, Math.min(hi, Math.round(+v))));
   const want = {
@@ -35,11 +41,11 @@ function generateCity(opts) {
   // Options de structure : plan (organique / bastide), enceinte (simple / double), ville haute + ville basse
   const rOpt = rng('structure|' + opts.size);
   const optRolls = [rOpt(), rOpt(), rOpt()];
-  const bastide = opts.plan === 'bastide' || (opts.plan === 'auto' && optRolls[0] < 0.12);
+  const bastide = !scen && opts.plan === 'bastide' || (opts.plan === 'auto' && optRolls[0] < 0.12);
   const big = ['grande', 'capitale', 'metropole', 'mega'].includes(opts.size);
   const doubleWall = opts.walls === 'double' || (opts.walls === 'auto' && big && optRolls[1] < 0.35);
-  const twin = !bastide && (opts.twin === 'oui' || (opts.twin === 'auto' && ['colline', 'collines'].includes(opts.relief) && optRolls[2] < 0.3));
-  const name = (opts.cityName || '').trim() || autoName;
+  const twin = !scen && !bastide && (opts.twin === 'oui' || (opts.twin === 'auto' && ['colline', 'collines'].includes(opts.relief) && optRolls[2] < 0.3));
+  const name = (opts.cityName || '').trim() || (SN && SN.city) || autoName;
 
   const N = size.cells;                 // nombre d'îlots constructibles intra-muros
   const R = 55 * Math.sqrt(N);          // rayon approximatif de la ville (1 unité = 1 m)
@@ -49,7 +55,8 @@ function generateCity(opts) {
   // Factions (voir factions.js) : chacune tient un secteur autour d'un centre neutre, séparé des voisins
   // par une crête, un ravin, l'eau ou un mur ; au centre, l'esplanade d'où le maire harangue la foule
   const nFactions = want.factions >= 2 ? want.factions : 0;
-  const F = makeFactions({ K: nFactions, R, E, cellR, rand: rng('factions'), terrace: nFactions >= 2 || wanted.includes('esplanade') });
+  const F = makeFactions({ K: nFactions, R, E, cellR, rand: rng('factions'), terrace: !scen && (nFactions >= 2 || wanted.includes('esplanade')),
+    fixed: scen && scen.factions ? scen.factions.map(f => f.at) : null });
   const T0 = F.terrace;
 
   // ================= 1. Îlots (Voronoi sur une spirale) =================
@@ -130,7 +137,7 @@ function generateCity(opts) {
   const rT = rng('relief');
   const reliefRoll = rT();
   const reliefFromHills = want.hills === null ? null : want.hills === 0 ? 'plaine' : want.hills === 1 ? 'colline' : 'collines';
-  const relief = twin && !['colline', 'collines'].includes(opts.relief) && !(want.hills > 0) ? 'colline'
+  const relief = scen ? 'collines' : twin && !['colline', 'collines'].includes(opts.relief) && !(want.hills > 0) ? 'colline'
     : opts.relief === 'vallee' ? 'vallee'
     : reliefFromHills && !(twin && want.hills === 0) ? reliefFromHills
     : ['plaine', 'colline', 'collines', 'vallee'].includes(opts.relief) ? opts.relief
@@ -194,7 +201,12 @@ function generateCity(opts) {
   const mainType = HILL_TYPES.includes(opts.hillType) ? opts.hillType : HILL_TYPES[Math.floor(rForm() * HILL_TYPES.length)];
   // Collines : la principale (acropole) + pour "collines" 2 à 4 collines secondaires plus basses
   const hills = [shapeHill({ ...hill, h: 1 }, rForm, mainType)];
-  if (relief === 'collines') {
+  if (scen && scen.hills) {
+    // Collines imposées : leur place, leur hauteur et leur forme
+    const maxH = Math.max(...scen.hills.map(h => h.height));
+    hills.length = 0;
+    scen.hills.forEach(sp => hills.push(Object.assign(shapeHill({ c: [sp.at[0] * R, sp.at[1] * R], r0: sp.r0 * R, band: sp.band * R, h: sp.height / maxH, ph: rForm() * 6.28 }, rForm, sp.type), { key: sp.key, landmark: sp.landmark })));
+  } else if (relief === 'collines') {
     const rH = rng('collines');
     const wantHills = want.hills !== null ? want.hills - 1 : 2 + Math.floor(rH() * 3);
     const reach = hl => hl.r0 + hl.band;
@@ -213,7 +225,7 @@ function generateCity(opts) {
   // comme à Lyon, Édimbourg ou au bord de la ville haute de Provins
   const rL = rng('ressauts');
   const ledgeRoll = rL();
-  const ledges = ['colline', 'collines'].includes(relief) && (want.ledges !== null ? want.ledges > 0 : opts.ledges === 'oui' || (opts.ledges === 'auto' && ledgeRoll < 0.5));
+  const ledges = !scen && ['colline', 'collines'].includes(relief) && (want.ledges !== null ? want.ledges > 0 : opts.ledges === 'oui' || (opts.ledges === 'auto' && ledgeRoll < 0.5));
   if (ledges) hills.forEach((hl, k) => {
     const skip = rL(), mRoll = rL();
     if (want.ledges === null && k > 0 && skip < 0.5) return;
@@ -303,7 +315,7 @@ function generateCity(opts) {
   const hRange = HILL_HEIGHT[mainType], hRoll = rAlt();
   const VALLEY_HEIGHT = { large: [55, 85], gorge: [80, 130], confluence: [50, 80], meandre: [60, 100] };
   const vRange = VALLEY_HEIGHT[valley.type];
-  const reliefHeight = relief === 'plaine' ? 6 : relief === 'vallee' ? vRange[0] + hRoll * (vRange[1] - vRange[0]) : hRange[0] + hRoll * (hRange[1] - hRange[0]);
+  const reliefHeight = scen && scen.hills ? Math.max(...scen.hills.map(h => h.height)) : relief === 'plaine' ? 6 : relief === 'vallee' ? vRange[0] + hRoll * (vRange[1] - vRange[0]) : hRange[0] + hRoll * (hRange[1] - hRange[0]);
   const altitude = (x, y) => baseAlt + elev(x, y) * reliefHeight;              // en mètres
   const slopePct = (x, y) => slope(x, y) * reliefHeight * 100;                 // pente en %
   const gradient = (x, y) => [elev(x + 3, y) - elev(x - 3, y), elev(x, y + 3) - elev(x, y - 3)];
@@ -367,6 +379,8 @@ function generateCity(opts) {
   };
   // Pente "raide" : plus de 40 % de la pente maximale du relief
   // Un îlot est "raide" si sa pente dépasse 25 % en son centre ou en son point d'origine
+  // Le sommet : le haut de la colline principale, relatif à l'îlot le plus haut (une butte étroite a peu d'îlots au sommet)
+  const topRef = hilly ? Math.max(...cells.map(c => hillHeight(0, ...c.site))) : 1;
   const measureCells = () => cells.forEach(c => {
     const ctr = Geo.centroid(c.ids.map(id => verts[id]));
     c.elev = elev(...c.site);
@@ -374,7 +388,7 @@ function generateCity(opts) {
     c.steep = c.slope > SLOPE_MAX;
     // Pente sans les frontières des factions : la ville a grandi avant que les factions ne s'y retranchent
     c.steepBase = c.steep;
-    c.top = hilly && !c.steep && hillHeight(0, ...c.site) > 0.8;   // plateau de la colline principale
+    c.top = hilly && !c.steep && hillHeight(0, ...c.site) > Math.min(0.8 * hills[0].h, 0.85 * topRef);   // plateau de la colline principale
     c.faction = F.factionAt(c.site);                               // -1 : pas de factions
     c.terrace = !!T0 && F.terraceLevel(c.site) > 0.4;              // le haut de l'esplanade
   });
@@ -387,11 +401,11 @@ function generateCity(opts) {
     const rHN = rng('noms-collines');
     const pool = HILL_NAMES.slice();
     for (let k = 1; k < hills.length; k++) {
-      const name = pool.splice(Math.floor(rHN() * pool.length), 1)[0];
+      const name = SN && hills[k].key ? SN[hills[k].key] : pool.splice(Math.floor(rHN() * pool.length), 1)[0];
       const top = cells.filter(c => !c.ids.some(id => Math.max(Math.abs(verts[id][0]), Math.abs(verts[id][1])) > E - 0.5))
         .reduce((m, c) => (!m || hillHeight(k, ...c.site) > hillHeight(k, ...m.site) ? c : m), null);
-      if (top && hillHeight(k, ...top.site) > hills[k].h * 0.5) {
-        top.building = { id: 'sanctuaire', label: name };
+      if (top && (hills[k].landmark || hillHeight(k, ...top.site) > hills[k].h * 0.5)) {
+        top.building = hills[k].landmark && SN ? { id: hills[k].landmark, label: SN[hills[k].landmark] } : { id: 'sanctuaire', label: name };
         hillNames.push({ name, at: hills[k].c });
       }
     }
@@ -436,7 +450,8 @@ function generateCity(opts) {
     return adj;
   };
   const rivers = [];
-  const userRivers = Array.isArray(opts.userRivers) ? opts.userRivers.filter(r => Array.isArray(r) && r.length >= 2) : null;
+  const userRivers = Array.isArray(opts.userRivers) ? opts.userRivers.filter(r => Array.isArray(r) && r.length >= 2)
+    : scen && scen.rivers ? scen.rivers.map(pts => pts.map(p => [p[0] * R, p[1] * R])) : null;
   if (userRivers) {
     // Rivières dessinées à la main : on suit le tracé de point en point le long du réseau, prolongé aux deux bouts
     const flatG = [];
@@ -528,7 +543,9 @@ function generateCity(opts) {
       if (i < n - 1) D[k] = Math.min(D[k], D[k + 1] + step);
       if (j < n - 1) { D[k] = Math.min(D[k], D[k + n] + step); if (i < n - 1) D[k] = Math.min(D[k], D[k + n + 1] + s2); if (i > 0) D[k] = Math.min(D[k], D[k + n - 1] + s2); }
     }
-    const wMax = Math.max(...rivers.map(rv => rv.w)), W = Math.max(70, 0.16 * R), depth = relief === 'vallee' ? 3 : 4 + 0.004 * R;
+    const wMax = Math.max(...rivers.map(rv => rv.w));
+    const W = scen && scen.valley ? scen.valley.width * R : Math.max(70, 0.16 * R);
+    const depth = scen && scen.valley ? scen.valley.depth : relief === 'vallee' ? 3 : 4 + 0.004 * R;
     for (let k = 0; k < n * n; k++) EG.data[k] -= (depth / reliefHeight) * (1 - smoothstep(Math.max(0, D[k] - wMax / 2) / W));
     measureCells();
   }
@@ -536,12 +553,12 @@ function generateCity(opts) {
 
   // ================= 4. Le noyau : la place du marché =================
   // Terrain plat, près du centre, près d'un gué si une rivière passe.
-  const flat = c => !c.steep && !c.top && !c.terrace && !c.building && !touchesBorder(c);
+  const flat = c => !c.steep && !c.top && !c.terrace && !c.building && !touchesBorder(c) && !onIsland(c.site);
   const onUpperHill = c => twin && hillHeight(0, ...c.site) > 0.2;
   const plaza = cells.filter(c => flat(c) && !touchesRiver(c) && !onUpperHill(c))
     .reduce((m, c) => {
       // Avec l'esplanade, le marché est au pied de sa falaise : la foule écoute d'en bas
-      const foot = T0 && !F.K ? T0.foot : null;   // sans factions, le marché est la place de la foule
+      const foot = scen && scen.market ? [scen.market[0] * R, scen.market[1] * R] : T0 && !F.K ? T0.foot : null;   // sans factions, le marché est la place de la foule
       // Le marché : près du centre, mais en bas (pas sur une colline), près d'un gué s'il y a une rivière
       const s = c2 => (foot ? dist(c2.site, foot) : Math.hypot(...c2.site) + (rivers.length ? 0.6 * Math.max(0, riverDist(c2.site) - cellR) : 0) + (hilly ? Math.max(0, c2.elev) * 0.45 * R + Math.max(0, Math.hypot(...c2.site) - 0.45 * R) * 3 : 0));
       return !m || s(c) < s(m) ? c : m;
@@ -563,7 +580,7 @@ function generateCity(opts) {
         if (vi === u || done.has(vi)) return;
         const cv = cells[vi];
         if (touchesBorder(cv)) return;
-        const step = dist(cu.site, cv.site) * (cv.steepBase ? 7 : cv.top ? 3 : 1) + (riverEdgeW.has(ek(a, b)) ? 2 * cellR : 0);
+        const step = dist(cu.site, cv.site) * (cv.steepBase ? 7 : cv.top ? 3 : 1) + (riverEdgeW.has(ek(a, b)) && !scen ? 2 * cellR : 0);   // Kades : la ville s'étend des deux côtés de la rivière
         if (bu + step < (growth.has(vi) ? growth.get(vi) : Infinity)) { growth.set(vi, bu + step); open.add(vi); }
       }));
     }
@@ -679,7 +696,7 @@ function generateCity(opts) {
 
   // ================= 7. Citadelle sur le sommet =================
   // Citadelle : oui (s'il y a une colline), non, ou au hasard ; une ville haute (Provins) en a toujours une
-  const citadelWanted = twin || opts.citadel === 'oui' || !opts.citadel || (opts.citadel === 'auto' && rng('citadelle')() < 0.6);
+  const citadelWanted = twin || !!scen || opts.citadel === 'oui' || !opts.citadel || (opts.citadel === 'auto' && rng('citadelle')() < 0.6);
   let citadelSet = citadelWanted ? new Set(cells.filter(c => (c.top || (twin && !c.steep && hillHeight(0, ...c.site) > 0.6)) && !touchesBorder(c)).map(c => c.index)) : new Set();
   if (hilly && citadelWanted && !citadelSet.size) {
     const highest = cells.filter(c => !touchesBorder(c) && c.type !== 'plaza').reduce((m, c) => (!m || c.elev > m.elev ? c : m), null);
@@ -733,7 +750,14 @@ function generateCity(opts) {
   const rG = rng('portes|' + opts.size);
   const gates = [];
   const base = rG() * Math.PI * 2;
-  const nGates = want.gates || size.gates;
+  const nGates = scen && scen.gates ? 0 : want.gates || size.gates;
+  if (scen && scen.gates) for (const sp of scen.gates) {
+    // Portes imposées : le sommet du rempart le plus proche de l'endroit voulu
+    const P = [sp.at[0] * R, sp.at[1] * R];
+    const pool = candidates.length ? candidates : wall;
+    const best = pool.filter(v => !gates.includes(v)).reduce((m, v) => (m < 0 || dist(verts[v], P) < dist(verts[m], P) ? v : m), -1);
+    if (best >= 0) gates.push(best);
+  }
   for (let g = 0; g < nGates; g++) {
     const target = base + (g * Math.PI * 2) / size.gates + (rG() - 0.5) * 0.5;
     let best = -1, bd = Infinity;
@@ -926,7 +950,30 @@ function generateCity(opts) {
       const s = rule.score(c) + jitter() * cellR * 0.4;
       if (s < bs) { bs = s; best = c; }
     }
-    if (best) best.building = { ...b, label: X.buildings[b.id] }; else missing.push(X.buildings[b.id] + (rule.why ? ' (' + rule.why + ')' : ''));
+    if (best) best.building = { ...b, label: SN && b.id === 'chateau' ? SN.fort : X.buildings[b.id] }; else missing.push(X.buildings[b.id] + (rule.why ? ' (' + rule.why + ')' : ''));
+  }
+
+  // Lieux imposés par une ville toute faite : les villas des marchands, l'école de la guilde
+  if (scen) {
+    const free = c => c.inner && !c.citadel && !c.building && c.type !== 'plaza' && !c.steep && !touchesBorder(c) && !onIsland(c.site);
+    const nearest = (P, ok) => cells.filter(ok).reduce((m, c) => (!m || dist(c.site, P) < dist(m.site, P) ? c : m), null);
+    if (scen.school) { const c = nearest([scen.school[0] * R, scen.school[1] * R], free); if (c) c.building = { id: 'college', label: SN.school, minor: true }; }
+    if (scen.villas) {
+      const P = [scen.villas.at[0] * R, scen.villas.at[1] * R];
+      // Même rive que l'endroit voulu (les villas des marchands sont rive droite, sous le Purificateur)
+      const RP = userRivers && userRivers[0];
+      const bank = q => {
+        if (!RP) return 0;
+        let bd = Infinity, sgn = 0;
+        for (let i = 0; i + 1 < RP.length; i++) { const d = Geo.distToSegment(q, RP[i], RP[i + 1]); if (d < bd) { bd = d; sgn = Math.sign((RP[i + 1][0] - RP[i][0]) * (q[1] - RP[i][1]) - (RP[i + 1][1] - RP[i][1]) * (q[0] - RP[i][0])); } }
+        return sgn;
+      };
+      const side = bank(P);
+      for (let k = 0; k < scen.villas.count; k++) {
+        const c = nearest(P, x => free(x) && bank(x.site) === side && !touchesRiver(x) && !cells.some(o => o.building && o.building.villa && dist(o.site, x.site) < 1.6 * cellR));
+        if (c) c.building = { id: 'hotel', label: SN.villas[k] || SN.villas[0], minor: true, villa: true };
+      }
+    }
   }
 
   // ================= 10b. Grands enclos : couvents, hôtels de seigneurs, collèges =================
@@ -937,7 +984,7 @@ function generateCity(opts) {
     const nEnc = Math.round(N / 10);
     const taken = cells.filter(c => c.building || c.type === 'plaza');
     const conv = X.enclosures.convents.slice(), mans = X.enclosures.mansions.slice(), sts = X.saints.slice();
-    const pool = cells.filter(c => c.inner && !c.citadel && !c.building && c.type !== 'plaza' && !c.steep && !c.terrace && !touchesBorder(c));
+    const pool = cells.filter(c => c.inner && !c.citadel && !c.building && c.type !== 'plaza' && !c.steep && !c.terrace && !touchesBorder(c) && !onIsland(c.site));
     for (let tries = 0, made = 0; made < nEnc && tries < nEnc * 40 && pool.length; tries++) {
       const c = pool[Math.floor(rE() * pool.length)];
       if (c.building || taken.some(o => dist(o.site, c.site) < 2.2 * cellR)) continue;
@@ -958,7 +1005,7 @@ function generateCity(opts) {
   // un ravin, l'enceinte de la citadelle ou un vieux mur coûte cher : les frontières s'y arrêtent d'elles-mêmes.
   let borders = [];
   if (F.K) {
-    const zone = cells.filter(c => c.inner || c.citadel);
+    const zone = cells.filter(c => (c.inner || c.citadel) && !onIsland(c.site));   // une île imposée n'appartient à aucune faction
     const taken0 = new Set(), seedCells = [];
     for (const sd of F.seeds) {
       const c = zone.filter(z => !taken0.has(z.index)).reduce((m, z) => (!m || dist(z.site, sd) < dist(m.site, sd) ? z : m), null);
@@ -975,14 +1022,14 @@ function generateCity(opts) {
       const cu = cells[u];
       cellEdges(cu).forEach(([a, b]) => (edgeCells.get(ek(a, b)) || []).forEach(vi => {
         const cv = cells[vi];
-        if (vi === u || !(cv.inner || cv.citadel)) return;
+        if (vi === u || !(cv.inner || cv.citadel) || onIsland(cv.site)) return;
         const key = ek(a, b);
         const step = dist(cu.site, cv.site)
           + (riverEdgeW.has(key) ? 12 * cellR : 0)                       // la rivière
-          + (citadelEdges.has(key) ? 8 * cellR : 0)                      // l'enceinte de la citadelle
+          + (citadelEdges.has(key) ? (scen ? 0.5 : 8) * cellR : 0)         // l'enceinte de la citadelle (Kades : le fort tient aussi le quartier à son pied)
           + (oldWallEdges.has(key) ? 3 * cellR : 0)                      // un vieux mur encore debout
-          + (cv.steep !== cu.steep ? 4 * cellR : 0)                      // le pied ou le haut d'une pente raide
-          + Math.max(0, climb(cu, cv) - 6) * cellR * 0.35;               // un dénivelé (crête, ravin, falaise)
+          + (cv.steep !== cu.steep ? (scen ? 0.6 : 4) * cellR : 0)         // le pied ou le haut d'une pente raide
+          + Math.max(0, climb(cu, cv) - 6) * cellR * (scen ? 0.05 : 0.35); // un dénivelé (crête, ravin, falaise) ; une ville toute faite garde ses quartiers au pied des collines
         if (bu + step < (cst.has(vi) ? cst.get(vi) : Infinity)) { cst.set(vi, bu + step); own.set(vi, own.get(u)); open.add(vi); }
       }));
     }
@@ -1009,12 +1056,18 @@ function generateCity(opts) {
       if (b.type === 'wall' && (b.high || 0) >= Math.max(1, b.edges * 0.35)) b.type = 'heights';   // le mur suit le bord des hauteurs
     });
   }
+  // Ville toute faite : une seule zone abandonnée, entre les deux quartiers qui se sont trop battus
+  if (scen && scen.abandoned && F.K) {
+    const [ka, kb] = scen.abandoned.map(key => scen.factions.findIndex(f => f.key === key));
+    borders.forEach(b => { b.waste = (b.a === Math.min(ka, kb) && b.b === Math.max(ka, kb)) ? 1 : 0; });
+  }
   // Terrains vagues : le long de certaines frontières, plus personne n'ose bâtir (ruines, broussailles)
   cells.forEach(c => {
     c.waste = !!F.K && c.inner && !c.citadel && !c.building && c.type !== 'plaza' && !c.terrace && c.faction >= 0
       && neighbours(c).some(o => (o.inner || o.citadel) && o.faction >= 0 && o.faction !== c.faction
         && (borders.find(b => b.a === Math.min(c.faction, o.faction) && b.b === Math.max(c.faction, o.faction)) || {}).waste > 0);
   });
+
 
   // ================= 11. Quartiers (chacun dans une seule enceinte) =================
   const rD = rng('quartiers|' + opts.size);
@@ -1203,7 +1256,7 @@ function generateCity(opts) {
   // Chaque enclos est un rectangle à la taille du bâtiment, tourné vers la place (plus de forme de cellule)
   const PRECINCT = { temple: [70, 46], chateau: [64, 64], palais: [52, 40], guildes: [38, 26], universite: [54, 42], caserne: [52, 36],
     prison: [32, 30], hospice: [46, 36], bains: [32, 26], arene: [64, 56], cimetiere: [56, 42], port: [64, 30], monastere: [72, 56],
-    moulin: [26, 26], sanctuaire: [34, 26], couvent: [84, 62], hotel: [46, 36], college: [54, 44] };
+    moulin: [26, 26], sanctuaire: [34, 26], couvent: [84, 62], hotel: [46, 36], college: [54, 44], purificateur: [130, 100] };
   const sizeK = { petite: 0.85, moyenne: 1, grande: 1.08, capitale: 1.15, metropole: 1.2, mega: 1.25 }[opts.size] || 1;
   const precinctOf = new Map();
   for (const c of cells) {
@@ -1438,7 +1491,7 @@ function generateCity(opts) {
     const lastRing0 = ringSets.length - 1;
     const outer = cells.filter(c => c.inner && !c.citadel && !c.building && c.type !== 'plaza' && !c.terrace && !c.steep && !c.waste
       && (age === 1 ? dist(c.site, plaza.site) > 0.6 * R : c.ring === lastRing0));
-    const target = Math.round(outer.length * (age === 1 ? 0.1 : 0.2));
+    const target = scen ? 0 : Math.round(outer.length * (age === 1 ? 0.1 : 0.2));
     const mainSegs = streets.filter(st => st.cls === 'main' || st.cls === 'road' || st.kind === 'citadel').flatMap(st => st.points.slice(1).map((p, i) => [st.points[i], p]));
     const cand = outer.map(c => ({ c, s: -dist(c.site, plaza.site) * (0.5 + rOL()) })).sort((a, b) => a.s - b.s);
     for (const { c } of cand) {
@@ -1495,9 +1548,12 @@ function generateCity(opts) {
   // Eau aménagée : biefs de moulin et îles (obstacles pour les rues et les maisons, voir water.js)
   const waterworks = makeWaterworks({
     rivers: rivers.map(rv => ({ w: rv.w, points: smooth(rv.path.map(id => verts[id]), 3) })), rand: rng('eau|' + opts.size), domainAt, slopeAt, cellR,
-    nCanals: want.canals !== null ? want.canals : 1, nIslands: want.islands !== null ? want.islands : 1, X,
+    nCanals: scen ? 0 : want.canals !== null ? want.canals : 1, nIslands: scen ? 0 : want.islands !== null ? want.islands : 1, X,
+    islandSpecs: scen && scen.islands ? scen.islands.map(sp => ({ ...sp, at: [sp.at[0] * R, sp.at[1] * R], len: sp.len * R, wid: sp.wid * R, name: SN[sp.key], toward: scen.market ? [scen.market[0] * R, scen.market[1] * R] : [0, -R] })) : [],
     addBarrier: (pts, half) => { for (let i = 0; i + 1 < pts.length; i++) addSeg({ a: pts[i], b: pts[i + 1], half, kind: 'river' }); },
   });
+  // L'eau autour d'une île imposée et l'île elle-même : ni rue, ni maison de la ville (seulement ses ponts et ses lieux)
+  for (const isl of waterworks.islands) if (isl.kind) reserves.push({ poly: isl.water, kind: 'island', frontage: false });
   const junctions = [];   // croisements créés par la croissance (pour les placettes)
   const breaches = [];
   const SPACING = { vieille: [30, 46], bourg: [38, 58], neuf: [48, 72], citadelle: [36, 54], faubourg: [60, 90] };
@@ -1692,7 +1748,7 @@ function generateCity(opts) {
 
   // ================= 14. Parcelles et maisons, le long des rues =================
   const city = {
-    lang, name, autoName, seed: opts.seed, size: opts.size, R, E, relief, age, moat,
+    lang, name, autoName: (SN && SN.city) || autoName, seed: opts.seed, size: opts.size, R, E, relief, age, moat,
     rivers: rivers.map(rv => ({ w: rv.w, points: smooth(rv.path.map(id => verts[id]), 3) })),
     bridges: [],
     wall: wallPoly,
@@ -1738,7 +1794,8 @@ function generateCity(opts) {
       const text = usedDirs.has(dir) ? X.gateExtra[Math.floor(rP() * X.gateExtra.length)] : X.gate(dir);
       usedDirs.add(dir);
       const l = Math.hypot(v[0], v[1]) || 1;
-      city.gateNames.push({ at: [v[0] + (v[0] / l) * 34, v[1] + (v[1] / l) * 34], text });
+      const gi = city.gateNames.length;
+      city.gateNames.push({ at: [v[0] + (v[0] / l) * 34, v[1] + (v[1] / l) * 34], text: scen && scen.gates && scen.gates[gi] ? SN[scen.gates[gi].key] : text });
     }
   }
 
@@ -1755,7 +1812,7 @@ function generateCity(opts) {
     }
     city.terrain = { G, step, E, alt, slope: slp, flat: relief === 'plaine' && !F.K && !T0, easy: SLOPE_EASY, max: SLOPE_MAX,
       min: Math.min(...alt), maxAlt: Math.max(...alt), base: baseAlt,
-      summits: hilly ? hills.map((hl, k) => ({ at: hl.c, alt: Math.round(altitude(...hl.c)), name: k === 0 ? (citadelSet.size ? (twin ? X.labels.upperTown : X.labels.citadel) : X.labels.hill) : (hillNames[k - 1] || {}).name })) : [] };
+      summits: hilly ? hills.map((hl, k) => ({ at: hl.c, alt: Math.round(altitude(...hl.c)), name: SN && hl.key ? SN[hl.key] : k === 0 ? (citadelSet.size ? (twin ? X.labels.upperTown : X.labels.citadel) : X.labels.hill) : (hillNames[k - 1] || {}).name })) : [] };
   }
 
   const ridgeOf = (poly, u) => {
@@ -1818,7 +1875,7 @@ function generateCity(opts) {
     }
     return m;
   };
-  const blocked = poly => {
+  const blocked = (poly, ownIsland = false) => {
     const c = Geo.centroid(poly);
     let x0 = Infinity, x1 = -Infinity, y0 = Infinity, y1 = -Infinity;
     for (const q of poly) { x0 = Math.min(x0, q[0]); x1 = Math.max(x1, q[0]); y0 = Math.min(y0, q[1]); y1 = Math.max(y1, q[1]); }
@@ -1828,6 +1885,7 @@ function generateCity(opts) {
       if (Math.max(sg.a[0], sg.b[0]) < x0 - h || Math.min(sg.a[0], sg.b[0]) > x1 + h || Math.max(sg.a[1], sg.b[1]) < y0 - h || Math.min(sg.a[1], sg.b[1]) > y1 + h) continue;
       if (segPolyDist(sg.a, sg.b, poly) < h) return true;
     }
+    if (ownIsland) return false;   // les maisons d'une île sont dans la réserve de son eau
     return poly.some(q => inReserve(q)) || inReserve(c);
   };
   // Distance libre devant soi (jusqu'à la rue d'en face, un mur, l'eau…) et ce qu'on rencontre
@@ -1957,10 +2015,30 @@ function generateCity(opts) {
   // Maisons sur les îles
   for (const isl of waterworks.islands) {
     const rand = rng('ile|' + isl.name), t = isl.axis, n = [-t[1], t[0]];
+    const at = (x, y) => [isl.at[0] + t[0] * x + n[0] * y, isl.at[1] + t[1] * x + n[1] * y];
+    if (isl.kind === 'esplanade') {
+      // L'île du pouvoir : une esplanade de pierre, une tour d'où l'on parle, une maison sans garde
+      isl.feature = { tower: [...at(isl.len * 0.18, -isl.wid * 0.05), 7], house: rect(at(-isl.len * 0.2, isl.wid * 0.05), t, 20, 13) };
+      continue;
+    }
+    if (isl.kind === 'theatres') {
+      // Scènes en demi-cercle au milieu de l'île, des lanternes le long du passage
+      const stages = [], lanterns = [];
+      for (const x of [-0.22, 0.06, 0.3]) {
+        const c = at(x * isl.len, (x > 0 ? -1 : 1) * isl.wid * 0.06), r = Math.min(13, isl.wid * 0.22), side = x > 0 ? -1 : 1;
+        const poly = [];
+        for (let k = 0; k <= 12; k++) { const a = Math.PI * k / 12; poly.push([c[0] + (t[0] * Math.cos(a) + n[0] * side * Math.sin(a)) * r, c[1] + (t[1] * Math.cos(a) + n[1] * side * Math.sin(a)) * r]); }
+        stages.push(poly);
+        placeB(rect(c, t, 2 * r, 2 * r));
+      }
+      for (let x = -isl.len * 0.4; x <= isl.len * 0.4; x += 9) lanterns.push(at(x, 0));
+      isl.feature = { stages, lanterns };
+    }
+    const deep = Math.min(isl.wid / 2 - 3, 11);
     for (let x = -isl.len / 2 + 6; x < isl.len / 2 - 6; x += between(rand, [7, 10])) for (const side of [-1, 1]) {
-      const c = [isl.at[0] + t[0] * x + n[0] * side * isl.wid / 4, isl.at[1] + t[1] * x + n[1] * side * isl.wid / 4];
-      const h = rect(c, t, between(rand, [5, 8]), isl.wid / 2 - 3);
-      if (h.every(q => inPoly(isl.land, q)) && !clashB(h) && !blocked(h) && rand() < 0.75) { placeB(h); addHouse(h, 'bourg', rand, false); people += ZONES.bourg.people; }
+      const c = at(x, side * (isl.wid / 2 - deep / 2 - 2.5));
+      const h = rect(c, t, between(rand, [5, 8]), deep);
+      if (h.every(q => inPoly(isl.land, q)) && !clashB(h) && !blocked(h, !!isl.kind) && rand() < 0.75) { placeB(h); addHouse(h, 'bourg', rand, false); people += ZONES.bourg.people; }
     }
   }
   // Hors les murs : église de faubourg, maladrerie, gibet, tanneries, moulins (voir outskirts.js)
@@ -2135,12 +2213,13 @@ function generateCity(opts) {
       const own = cells.filter(c => (c.inner || c.citadel) && c.faction === k);
       if (!own.length) continue;
       const isMayor = k === F.mayor;
-      const auto = isMayor ? X.factions.centre : pool.splice(Math.floor(rF() * pool.length), 1)[0] || X.factions.fallback(k + 1);
+      const sf = scen && scen.factions ? scen.factions[k] : null;
+      const auto = sf ? SN[sf.key] : isMayor ? X.factions.centre : pool.splice(Math.floor(rF() * pool.length), 1)[0] || X.factions.fallback(k + 1);
       const mid = [own.reduce((a, c) => a + c.site[0], 0) / own.length, own.reduce((a, c) => a + c.site[1], 0) / own.length];
       const lab = own.filter(c => !c.steep && !c.waste).reduce((m, c) => (!m || dist(c.site, mid) < dist(m.site, mid) ? c : m), null) || own[0];
       const alts = own.map(c => altitude(...c.site)), meanAlt = alts.reduce((a, v) => a + v, 0) / alts.length;
       city.factions.push({
-        index: k, mayor: isMayor, name: (custom[k] || '').trim() || auto, auto, color: isMayor ? '#7d6a45' : PALETTE[k % PALETTE.length],
+        index: k, mayor: isMayor, name: (custom[k] || '').trim() || auto, auto, color: sf ? sf.color : isMayor ? '#7d6a45' : PALETTE[k % PALETTE.length],
         polys: own.map(c => c.ids.map(id => verts[id])), at: lab.site, cells: own,
         outline: own.flatMap(c => cellEdges(c).filter(([a, b]) => !(edgeCells.get(ek(a, b)) || []).some(ci => ci !== c.index && (cells[ci].inner || cells[ci].citadel) && cells[ci].faction === k)).map(([a, b]) => [verts[a], verts[b]])),
         meanAlt: Math.round(meanAlt), citadel: own.some(c => c.citadel), river: own.some(c => touchesRiver(c)), market: own.some(c => c.type === 'plaza'),
@@ -2241,6 +2320,26 @@ function generateCity(opts) {
       city.stairs.push({ at, angle: (a * 180) / Math.PI, name: X.factions.esplanadeStairs });
     }
   }
+
+  // Îles imposées : leurs ponts, leurs lieux, et l'île des théâtres comme quartier à part
+  for (const isl of waterworks.islands) {
+    for (const b of isl.bridges || []) city.bridges.push({ x: b.x, y: b.y, angle: b.angle, length: b.length, inhabited: false });
+    if (isl.kind === 'esplanade' && SN) {
+      city.labels.push({ at: [isl.feature.tower[0], isl.feature.tower[1] - 13], text: SN.tower, small: true });
+      city.labels.push({ at: Geo.centroid(isl.feature.house), text: SN.maskHouse, small: true });
+      city.labels.push({ at: [isl.at[0], isl.at[1] + isl.wid * 0.3], text: SN.esplanade, small: true });
+    }
+    if (isl.kind === 'theatres' && SN && city.factions.length) {
+      city.factions.push({ index: city.factions.length, name: (opts.factionNames || [])[city.factions.length] || SN.theatresFaction, auto: SN.theatresFaction, color: '#2f8c86',
+        polys: [isl.land], at: isl.at, outline: isl.land.map((p, i) => [p, isl.land[(i + 1) % isl.land.length]]), island: true,
+        meanAlt: Math.round(altitude(...isl.at)), citadel: false, river: true, market: false, districts: [], borders: [] });
+    }
+  }
+  if (scen && scen.abandoned) {
+    const zone = cells.filter(c => c.waste);
+    if (zone.length) city.labels.push({ at: [zone.reduce((a, c) => a + c.site[0], 0) / zone.length, zone.reduce((a, c) => a + c.site[1], 0) / zone.length], text: SN.abandoned, italic: true });
+  }
+  if (scen) { const mk = city.labels.find(l => l.text === X.labels.market); if (mk) mk.text = SN.market; }
 
   // La citadelle a son étiquette
   if (citadelPoly) {

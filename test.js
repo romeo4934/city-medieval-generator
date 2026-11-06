@@ -14,7 +14,7 @@ const path = require('path');
 const vm = require('vm');
 const os = require('os');
 
-const FILES = ['i18n.js', 'geo.js', 'terrain.js', 'catalog.js', 'land.js', 'water.js', 'outskirts.js', 'factions.js', 'monuments.js', 'names.js', 'generator.js', 'lore.js', 'lore-en.js', 'render.js', 'sight.js'];
+const FILES = ['i18n.js', 'geo.js', 'terrain.js', 'catalog.js', 'land.js', 'water.js', 'outskirts.js', 'factions.js', 'presets.js', 'monuments.js', 'names.js', 'generator.js', 'lore.js', 'lore-en.js', 'render.js', 'sight.js'];
 
 function optionsFor(i) {
   const sizes = ['petite', 'moyenne', 'grande', i % 16 === 15 ? 'mega' : i % 8 === 7 ? 'metropole' : 'capitale'];
@@ -31,6 +31,7 @@ function optionsFor(i) {
     nHills: i % 11 === 5 ? 10 : i % 11 === 6 ? 6 : null, nLedges: i % 13 === 4 ? 3 : null, nFactions: i % 3 === 1 ? 2 + (i % 7) : null,
     terrainEdits: i % 6 === 2 ? [{ t: 'r', x: 60, y: -40, r: 90, a: 8, g: 1 }, { t: 'l', x: -80, y: 30, r: 70, a: 5, g: 2 }, { t: 's', x: 0, y: 0, r: 120, a: 4, g: 3 }] : [],
     citadel: i % 4 === 1 ? 'non' : i % 4 === 3 ? 'auto' : 'oui',
+    preset: i % 10 === 7 ? 'kades' : '',
     userRivers: i % 9 === 4 ? [[[-300, -50], [0, 20], [250, 120]]] : null,
     buildings: i % 3 ? ['temple', 'chateau', 'palais', 'guildes', 'universite', 'caserne', 'prison', 'hospice', 'bains', 'arene', 'cimetiere', 'port', 'monastere', 'moulin'] : ['temple', 'chateau'],
   };
@@ -101,6 +102,7 @@ if (isMainThread) {
       const city = generateCity(opts);
       slowest = Math.max(slowest, Date.now() - t);
       const svg = renderSVG(city);
+      renderSVG(city, { winter: true, labels: false, factions: false });
       renderSVG(city, { view: 'relief' });
       renderSVG(city, { view: 'pentes' });
       const sheet = citySheet(city);
@@ -109,7 +111,13 @@ if (isMainThread) {
       if (city.gates.length < 2) fail('moins de 2 portes', opts);
       if (!sheet.includes('# ' + city.name)) fail('fiche incomplète', opts);
       if (!svg.startsWith('<svg') || !svg.endsWith('</svg>')) fail('SVG mal formé', opts);
-      if (opts.nFactions) {
+      if (opts.preset === 'kades') {
+        if (city.factions.length < 7) fail(`Kades : ${city.factions.length} factions`, opts);
+        if (!city.islands.some(i => i.kind === 'esplanade') || !city.islands.some(i => i.kind === 'theatres')) fail('Kades : îles manquantes', opts);
+        if (!city.specials.some(s => s.id === 'purificateur')) fail('Kades : pas de Purificateur', opts);
+        if (!city.citadel) fail('Kades : pas de fort', opts);
+      }
+      if (opts.nFactions && !opts.preset) {
         if (city.factions.length < 2) fail(`${city.factions.length} faction(s) sur ${opts.nFactions}`, opts);
         if (!city.esplanade) fail('pas d\'esplanade', opts);
         if (!sheet.includes('## Factions')) fail('factions absentes de la fiche', opts);
