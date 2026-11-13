@@ -19,19 +19,19 @@ const PRESETS = {
     // hills[0] carries the citadel: the congregation's closed quarter, the Purifier at the top
     hills: [
       { key: 'purifierHill', at: [0.36, -0.58], height: 46, type: 'butte', r0: 0.13, band: 0.25, landmark: 'purificateur' },
-      { key: 'marketHill', at: [0.46, 0.5], height: 26, type: 'table', r0: 0.13, band: 0.2 },
+      { key: 'marketHill', at: [0.5, 0.74], height: 22, type: 'table', r0: 0.22, band: 0.3 },
     ],
     islands: [
-      { key: 'centre', at: [0, 0], len: 0.42, wid: 0.22, kind: 'esplanade', bridges: ['left', 'right', { toward: [0.4, 0.3] }] },
+      { key: 'centre', at: [0, 0], len: 0.42, wid: 0.22, kind: 'esplanade', bridges: ['left', 'right', { toward: [0.4, 0.5] }] },
     ],
-    market: [0.46, 0.5],
+    market: [0.5, 0.74],
     fort: [-0.45, -0.45],
     barracks: [-0.6, -0.3],
     villas: { at: [0.38, -0.1], count: 6 },
-    gates: [{ key: 'southGate', at: [0.35, 1.05] }, { key: 'northWestGate', at: [-0.8, -0.8] }],
+    gates: [{ key: 'southGate', at: [0.5, 1.1], nearHill: 'marketHill' }, { key: 'northWestGate', at: [-0.8, -0.8] }],
     factions: [
       { key: 'congregation', at: [0.36, -0.58], color: '#c29a2e', closed: true },
-      { key: 'guild', at: [0.5, 0.58], color: '#3f6e9e' },
+      { key: 'guild', at: [0.5, 0.74], color: '#3f6e9e' },
       { key: 'merchants', at: [0.44, -0.12], color: '#8a4f9e' },
       { key: 'loyalists', at: [-0.45, -0.45], color: '#5f6470', closed: true },
       { key: 'theatres', at: [-0.35, 0.12], color: '#2f8c86', open: true },

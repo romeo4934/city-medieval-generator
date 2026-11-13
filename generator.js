@@ -406,7 +406,8 @@ function generateCity(opts) {
       const top = cells.filter(c => !c.ids.some(id => Math.max(Math.abs(verts[id][0]), Math.abs(verts[id][1])) > E - 0.5))
         .reduce((m, c) => (!m || hillHeight(k, ...c.site) > hillHeight(k, ...m.site) ? c : m), null);
       if (top && (hills[k].landmark || hillHeight(k, ...top.site) > hills[k].h * 0.5)) {
-        top.building = hills[k].landmark && SN ? { id: hills[k].landmark, label: SN[hills[k].landmark] } : { id: 'sanctuaire', label: name };
+        // Ville toute faite : une colline sans repère imposé garde son sommet libre (le marché de Kades)
+        if (!(SN && hills[k].key && !hills[k].landmark)) top.building = hills[k].landmark && SN ? { id: hills[k].landmark, label: SN[hills[k].landmark] } : { id: 'sanctuaire', label: name };
         hillNames.push({ name, at: hills[k].c });
       }
     }
@@ -571,9 +572,9 @@ function generateCity(opts) {
   const growth = new Map([[plaza.index, 0]]);
   // Ville toute faite : la ville a poussé autour de la rivière, au centre, pas seulement autour du marché
   const centreCell = scen ? cells.filter(c => !touchesBorder(c) && !c.steep).reduce((m, c) => (!m || Math.hypot(...c.site) < Math.hypot(...m.site) ? c : m), null) : null;
-  if (centreCell) growth.set(centreCell.index, 0);
+  if (centreCell) { growth.delete(plaza.index); growth.set(centreCell.index, 0); }
   {
-    const open = new Set(centreCell ? [plaza.index, centreCell.index] : [plaza.index]);
+    const open = new Set(centreCell ? [centreCell.index] : [plaza.index]);   // Kades : la ville part de la rivière, le marché est en bordure
     const done = new Set();
     while (open.size) {
       let u = -1, bu = Infinity;
@@ -757,9 +758,14 @@ function generateCity(opts) {
   const nGates = scen && scen.gates ? 0 : want.gates || size.gates;
   if (scen && scen.gates) for (const sp of scen.gates) {
     // Portes imposées : le sommet du rempart le plus proche de l'endroit voulu
-    const P = [sp.at[0] * R, sp.at[1] * R];
+    // « au pied de » une colline : le point du rempart le plus proche de cette colline
+    // (dans le prolongement du centre vers la colline : on entre par la porte et on est au pied du marché)
+    const H = sp.nearHill ? hills.find(h => h.key === sp.nearHill) : null;
+    const P = H ? H.c : [sp.at[0] * R, sp.at[1] * R];
     const pool = candidates.length ? candidates : wall;
-    const best = pool.filter(v => !gates.includes(v)).reduce((m, v) => (m < 0 || dist(verts[v], P) < dist(verts[m], P) ? v : m), -1);
+    const dirH = H ? norm(H.c) : null;
+    const score = v => (H ? dist(verts[v], P) - 0.8 * Math.max(0, (verts[v][0] - P[0]) * dirH[0] + (verts[v][1] - P[1]) * dirH[1]) + 3 * Math.abs((verts[v][0] - P[0]) * dirH[1] - (verts[v][1] - P[1]) * dirH[0]) : dist(verts[v], P));
+    const best = pool.filter(v => !gates.includes(v)).reduce((m, v) => (m < 0 || score(v) < score(m) ? v : m), -1);
     if (best >= 0) gates.push(best);
   }
   for (let g = 0; g < nGates; g++) {
