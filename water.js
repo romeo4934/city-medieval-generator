@@ -59,7 +59,8 @@ function makeWaterworks(T) {
       const n = [-t[1], t[0]];   // vers la rive droite quand la rivière coule vers l'est
       const along = (d, a, b) => { const c = d[0] * t[0] + d[1] * t[1], s2 = d[0] * n[0] + d[1] * n[1]; return 1 / Math.sqrt((c / a) ** 2 + (s2 / b) ** 2); };
       const bridges = (sp.bridges || []).map(side => {
-        let d = side === 'right' ? n : side === 'left' ? [-n[0], -n[1]] : norm([sp.toward[0] - P[i][0], sp.toward[1] - P[i][1]]);
+        const to = side && side.toward ? side.toward : sp.toward;
+        let d = side === 'right' ? n : side === 'left' ? [-n[0], -n[1]] : norm([to[0] - P[i][0], to[1] - P[i][1]]);
         const r0 = along(d, len / 2, wid / 2) - 3, r1 = along(d, wa, wb) + 6;
         return { x: P[i][0] + d[0] * (r0 + r1) / 2, y: P[i][1] + d[1] * (r0 + r1) / 2, angle: (Math.atan2(d[1], d[0]) * 180) / Math.PI, length: r1 - r0 };
       });

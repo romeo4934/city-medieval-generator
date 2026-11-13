@@ -121,9 +121,11 @@ function citySheetFr(city) {
   // --- Factions ---
   if ((city.factions || []).length) {
     L.push('## Factions', '');
-    L.push("Chaque territoire est muré tout autour, avec une porte fortifiée partout où passe une grande rue ; les petites rues sont murées.", '');
+    const PN = city.presetNotes;
+    L.push(PN ? PN.barriers : "Chaque territoire est muré tout autour, avec une porte fortifiée partout où passe une grande rue ; les petites rues sont murées.", '');
+    if (PN && PN.centre && city.islands.length) L.push(`- **${city.islands[0].name}** : ${PN.centre}`);
     const BAR = { ridge: "son mur suit la crête d'une arête escarpée", ravine: "son mur se dresse au bord d'un ravin entre deux falaises",
-      water: 'un canal (on ne le passe que sur les ponts)', wall: 'rien que le mur', heights: 'son mur suit le bord des hauteurs, au-dessus de la pente' };
+      water: 'un canal (on ne le passe que sur les ponts)', wall: 'rien que le mur', open: 'aucune barrière', heights: 'son mur suit le bord des hauteurs, au-dessus de la pente' };
     const nameOf = i => (city.factions.find(f => f.index === i) || {}).name || 'sa voisine';
     // de / à + article : « des Loyalistes », « au Quartier du Maire »
     const deFr = t => t.replace(/^Les /, 'des ').replace(/^Le /, 'du ').replace(/^La /, 'de la ').replace(/^L'/, "de l'").replace(/^(?!des |du |de )/, 'de ');
@@ -138,19 +140,19 @@ function citySheetFr(city) {
       if (f.market) extra.push('le grand marché est dans ses murs');
       const e = city.esplanade;
       const mayor = f.mayor && e ? ` C'est ici que se dresse ${e.name.charAt(0).toLowerCase() + e.name.slice(1)} : une terrasse haute de ${e.height} m au sommet d'une falaise. Le maire parle depuis la tribune, au bord ; la foule se rassemble en bas, sur la ${(e.square || 'place').replace(/^Place /, 'place ')}, pour l'écouter ; les jours de discours, les portes s'ouvrent à tous, quelles que soient leurs couleurs.` : '';
-      L.push(`- **${f.name}**${f.districts.length ? ` (${listFr(f.districts)})` : ''} : ${parts.join(' ; ')}.${extra.length ? ' ' + cap(listFr(extra)) + '.' : ''}${mayor}`);
+      L.push(`- **${f.name}**${f.districts.length ? ` (${listFr(f.districts)})` : ''} : ${f.note ? f.note + ' ' : ''}${cap(parts.join(' ; '))}.${extra.length ? ' ' + cap(listFr(extra)) + '.' : ''}${mayor}`);
     }
     L.push('', "Depuis la rue, personne ne voit dans le quartier d'une autre faction : les murs, les crêtes et les maisons elles-mêmes cachent la vue. Seule une hauteur (une tour, une station de câble, l'esplanade) permet de regarder par-dessus les frontières (la vue Regard permet de le vérifier).", '');
     const cables = city.cables || [];
     if (cables.length) {
       L.push('## Câbles', '');
       const st = city.cableStations || [];
-      L.push(`Des câbles tendus entre des tours font passer gens, marchandises et messages par-dessus les murs, en nacelle ou au crochet. Le réseau officiel relie ${st.length} stations, toutes sur des hauteurs (${city.esplanade ? "l'esplanade du maire en est une" : 'des tours'}) ; pour un long trajet, on change de câble en route.`, '');
+      L.push(PN && PN.grandCable ? `${PN.smallCables} ${city.cables.find(k => k.grand) ? city.cables.find(k => k.grand).name + ' : ' + PN.grandCable : ''}` : `Des câbles tendus entre des tours font passer gens, marchandises et messages par-dessus les murs, en nacelle ou au crochet. Le réseau officiel relie ${st.length} stations, toutes sur des hauteurs (${city.esplanade ? "l'esplanade du maire en est une" : 'des tours'}) ; pour un long trajet, on change de câble en route.`, '');
       for (const k of cables) {
         const [a, b] = k.factions.map(nameOf);
         const low = t => t.replace(/^L/, 'l');
-        const where = k.secret ? `entre ${low(a)} et ${low(b)}, depuis deux maisons-tours discrètes de part et d'autre de la frontière ; seules ces deux factions le connaissent` : a === b ? `ligne officielle à l'intérieur ${deFr(a)}` : `ligne officielle entre ${low(a)} et ${low(b)}`;
-        L.push(`- **${k.name}**${k.secret ? ' (secret)' : ''} : ${where}. ${k.length} m de long, ${k.clearance > 0 ? `au moins ${k.clearance} m au-dessus des toits` : k.pylons.length ? 'soutenue par un pylône là où elle frôlerait le sol' : 'rasant les toits'}.`);
+        const where = k.paid ? `câble de la guilde entre ${low(a)} et ${low(b)}, de toit à toit ; on paie pour passer` : k.grand ? `de ${low(a)} à ${low(b)}, d'une colline à l'autre` : k.secret ? `entre ${low(a)} et ${low(b)}, depuis deux maisons-tours discrètes de part et d'autre de la frontière ; seules ces deux factions le connaissent` : a === b ? `ligne officielle à l'intérieur ${deFr(a)}` : `ligne officielle entre ${low(a)} et ${low(b)}`;
+        L.push(`- **${k.name}**${k.secret && !k.paid ? ' (secret)' : ''} : ${where}. ${k.length} m de long, ${k.clearance > 0 ? `au moins ${k.clearance} m au-dessus des toits` : k.pylons.length ? 'soutenue par un pylône là où elle frôlerait le sol' : 'rasant les toits'}.`);
       }
       L.push('');
     }

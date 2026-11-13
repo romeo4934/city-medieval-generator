@@ -112,10 +112,12 @@ if (isMainThread) {
       if (!sheet.includes('# ' + city.name)) fail('fiche incomplète', opts);
       if (!svg.startsWith('<svg') || !svg.endsWith('</svg>')) fail('SVG mal formé', opts);
       if (opts.preset === 'kades') {
-        if (city.factions.length < 7) fail(`Kades : ${city.factions.length} factions`, opts);
-        if (!city.islands.some(i => i.kind === 'esplanade') || !city.islands.some(i => i.kind === 'theatres')) fail('Kades : îles manquantes', opts);
+        if (city.factions.length < 6) fail(`Kades : ${city.factions.length} factions`, opts);
+        if (!city.islands.some(i => i.kind === 'esplanade')) fail("Kades : pas d'île du centre", opts);
         if (!city.specials.some(s => s.id === 'purificateur')) fail('Kades : pas de Purificateur', opts);
-        if (!city.citadel) fail('Kades : pas de fort', opts);
+        if (!city.specials.some(s => s.id === 'chateau')) fail('Kades : pas de fort', opts);
+        if (!city.cables.some(k => k.grand)) fail('Kades : pas de Grand Câble', opts);
+        if (city.gates.length !== 2) fail(`Kades : ${city.gates.length} portes`, opts);
       }
       if (opts.nFactions && !opts.preset) {
         if (city.factions.length < 2) fail(`${city.factions.length} faction(s) sur ${opts.nFactions}`, opts);

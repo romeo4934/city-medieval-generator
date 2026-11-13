@@ -644,10 +644,11 @@ function renderSVG(city, options = {}) {
   const ck = Math.max(1, E / 800);   // épaisseur des câbles : lisibles même sur une mégapole
   for (const k of city.cables || []) {
     const A = k.from.at, B = k.to.at, d = lineD([A, ...k.pylons, B]);
-    if (k.secret) out.push(`<path d="${d}" fill="none" stroke="#7a2a2a" stroke-width="${n1(1.5 * ck)}" stroke-dasharray="${n1(6 * ck)} ${n1(4 * ck)}" stroke-opacity=".9"/>`);
+    if (k.secret) out.push(`<path d="${d}" fill="none" stroke="${k.paid ? '#8a6420' : '#7a2a2a'}" stroke-width="${n1(1.5 * ck)}" stroke-dasharray="${n1(6 * ck)} ${n1(4 * ck)}" stroke-opacity=".9"/>`);
     else {
-      out.push(`<path d="${d}" fill="none" stroke="#fffaf0" stroke-width="${n1(4.5 * ck)}" stroke-opacity=".85"/>`);
-      out.push(`<path d="${d}" fill="none" stroke="#2f2820" stroke-width="${n1(1.5 * ck)}"/>`);
+      const gk = k.grand ? 2 : 1;   // le Grand Câble : deux fois plus épais
+      out.push(`<path d="${d}" fill="none" stroke="#fffaf0" stroke-width="${n1(4.5 * ck * gk)}" stroke-opacity=".85"/>`);
+      out.push(`<path d="${d}" fill="none" stroke="#2f2820" stroke-width="${n1(1.5 * ck * gk)}"/>`);
       const L = Math.hypot(B[0] - A[0], B[1] - A[1]) || 1, u = [(B[0] - A[0]) / L, (B[1] - A[1]) / L];
       const m = [A[0] + u[0] * L * 0.38, A[1] + u[1] * L * 0.38];
       out.push(`<rect x="${n1(-3.5 * ck)}" y="${n1(-2.5 * ck)}" width="${n1(7 * ck)}" height="${n1(5 * ck)}" fill="#c29a2e" stroke="#2f2820" stroke-width="${n1(0.8 * ck)}" transform="translate(${n1(m[0])} ${n1(m[1])}) rotate(${n1(Math.atan2(u[1], u[0]) * 180 / Math.PI)})"/>`);
